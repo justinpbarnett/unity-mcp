@@ -5,6 +5,7 @@
   "description": "A Unity package to communicate with a local MCP Client via a Python server.",
   "unity": "2022.3",
   "dependencies": {
-    "com.unity.nuget.newtonsoft-json": "3.0.2"
+    "com.unity.nuget.newtonsoft-json": "3.0.2",
+    "com.unity.cloud.gltfast": "6.10.3"
   }
 }
