@@ -83,7 +83,10 @@ def register_asset_tools(mcp: FastMCP):
         Args:
             ctx: The MCP context
             prefab_path: Path to the prefab asset (relative to Assets folder)
-            prefab_suffix: The suffix of the prefab file (default: ".prefab")
+            prefab_suffix: The suffix of the prefab file.Must to be included if
+                           trying to instantiate something other than ".prefab"
+                           are trying to get instantiated, like a model file
+                           (".fbx", ".gltf" and others). (default: ".prefab")
             position_x: X position in world space (default: 0.0)
             position_y: Y position in world space (default: 0.0)
             position_z: Z position in world space (default: 0.0)
@@ -133,7 +136,7 @@ def register_asset_tools(mcp: FastMCP):
             
             prefab_exists = any(asset.get("path") == prefab_path for asset in prefab_assets)
             if not prefab_exists:
-                return f"Prefab '{prefab_path}' not found in the project." + "\n" + str(prefab_assets)
+                return f"Prefab '{prefab_path}' not found in the project."
             
             response = unity.send_command("INSTANTIATE_PREFAB", {
                 "prefab_path": prefab_path,

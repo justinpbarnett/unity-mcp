@@ -35,7 +35,13 @@ namespace UnityMCP.Editor.Commands
             { "GET_SELECTED_OBJECT", _ => ObjectCommandHandler.GetSelectedObject() },
 
             // Editor control commands
-            { "EDITOR_CONTROL", parameters => EditorControlHandler.HandleEditorControl(parameters) }
+            { "EDITOR_CONTROL", parameters => EditorControlHandler.HandleEditorControl(parameters) },
+
+            // Hyper3D Rodin commands
+            { "GET_HYPER3D_STATUS", _ => Hyper3DRodin.Hyper3DRodinCommandHandler.GetHyper3DStatus() },
+            { "CREATE_RODIN_JOB", parameters => Hyper3DRodin.Hyper3DRodinCommandHandler.CreateRodinJob(parameters) },
+            { "POLL_RODIN_JOB_STATUS", parameters => Hyper3DRodin.Hyper3DRodinCommandHandler.PollRodinJobStatus(parameters) },
+            { "DOWNLOAD_RODIN_JOB_RESULT", parameters => Hyper3DRodin.Hyper3DRodinCommandHandler.DownloadRodinJobResult(parameters) },
         };
 
         /// <summary>
