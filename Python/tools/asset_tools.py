@@ -70,18 +70,20 @@ def register_asset_tools(mcp: FastMCP):
     def instantiate_prefab(
         ctx: Context,
         prefab_path: str,
+        prefab_suffix: str = ".prefab",
         position_x: float = 0.0,
         position_y: float = 0.0,
         position_z: float = 0.0,
         rotation_x: float = 0.0,
         rotation_y: float = 0.0,
-        rotation_z: float = 0.0
+        rotation_z: float = 0.0,
     ) -> str:
         """Instantiate a prefab into the current scene at a specified location.
 
         Args:
             ctx: The MCP context
             prefab_path: Path to the prefab asset (relative to Assets folder)
+            prefab_suffix: The suffix of the prefab file (default: ".prefab")
             position_x: X position in world space (default: 0.0)
             position_y: Y position in world space (default: 0.0)
             position_z: Z position in world space (default: 0.0)
@@ -94,6 +96,7 @@ def register_asset_tools(mcp: FastMCP):
         """
         try:
             unity = get_unity_connection()
+            prefab_suffix = prefab_suffix.lower()
             
             # Parameter validation
             if not prefab_path or not isinstance(prefab_path, str):
@@ -118,19 +121,19 @@ def register_asset_tools(mcp: FastMCP):
             prefab_name = prefab_path.split('/')[-1]
             
             # Ensure prefab has .prefab extension for searching
-            if not prefab_name.lower().endswith('.prefab'):
-                prefab_name = f"{prefab_name}.prefab"
-                prefab_path = f"{prefab_path}.prefab"
+            if not prefab_name.lower().endswith(prefab_suffix):
+                prefab_name = f"{prefab_name}{prefab_suffix}"
+                prefab_path = f"{prefab_path}{prefab_suffix}"
                 
             prefab_assets = unity.send_command("GET_ASSET_LIST", {
-                "type": "Prefab",
-                "search_pattern": prefab_name,
+                "type": "Prefab" if prefab_suffix == ".prefab" else "GameObject",
+                "search_pattern": prefab_name.removesuffix(prefab_suffix),
                 "folder": prefab_dir
             }).get("assets", [])
             
             prefab_exists = any(asset.get("path") == prefab_path for asset in prefab_assets)
             if not prefab_exists:
-                return f"Prefab '{prefab_path}' not found in the project."
+                return f"Prefab '{prefab_path}' not found in the project." + "\n" + str(prefab_assets)
             
             response = unity.send_command("INSTANTIATE_PREFAB", {
                 "prefab_path": prefab_path,
