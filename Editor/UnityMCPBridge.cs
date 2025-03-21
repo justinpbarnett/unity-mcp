@@ -306,6 +306,10 @@ namespace UnityMCP.Editor
                     "APPLY_PREFAB" => AssetCommandHandler.ApplyPrefab(command.@params),
                     "GET_ASSET_LIST" => AssetCommandHandler.GetAssetList(command.@params),
                     "EDITOR_CONTROL" => EditorControlHandler.HandleEditorControl(command.@params),
+                    "GET_HYPER3D_STATUS" => Hyper3DRodin.Hyper3DRodinCommandHandler.GetHyper3DStatus(),
+                    "CREATE_RODIN_JOB" => Hyper3DRodin.Hyper3DRodinCommandHandler.CreateRodinJob(command.@params),
+                    "POLL_RODIN_JOB_STATUS" => Hyper3DRodin.Hyper3DRodinCommandHandler.PollRodinJobStatus(command.@params),
+                    "DOWNLOAD_RODIN_JOB_RESULT" => Hyper3DRodin.Hyper3DRodinCommandHandler.DownloadRodinJobResult(command.@params),
                     _ => throw new Exception($"Unknown command type: {command.type}")
                 };
 
