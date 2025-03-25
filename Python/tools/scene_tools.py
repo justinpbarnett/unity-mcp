@@ -8,7 +8,13 @@ def register_scene_tools(mcp: FastMCP):
     
     @mcp.tool()
     def get_scene_info(ctx: Context) -> str:
-        """Retrieve detailed info about the current Unity scene."""
+        """Retrieve detailed info about the current Unity scene.
+        
+        Returns:
+            str: JSON string containing scene information including:
+                - sceneName: Name of the current scene
+                - rootObjects: List of root GameObject names in the scene
+        """
         try:
             unity = get_unity_connection()
             result = unity.send_command("GET_SCENE_INFO")
