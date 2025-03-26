@@ -6,6 +6,7 @@
   "unity": "2020.3",
   "dependencies": {
     "com.unity.nuget.newtonsoft-json": "3.0.2",
-    "com.unity.render-pipelines.universal": "12.1.7"
+    "com.unity.render-pipelines.universal": "12.1.7",
+    "com.unity.cloud.gltfast": "6.10.3"
   }
 }
