@@ -29,13 +29,8 @@ namespace UnityMCP.Editor.Windows
         private float lastCheckTime = 0f;
         private McpClients mcpClients = new();
 
-        private List<string> possiblePaths = new()
-        {
-            Path.GetFullPath(Path.Combine(Application.dataPath, "unity-mcp", "Python", "server.py")),
-            Path.GetFullPath(Path.Combine(Application.dataPath, "Packages", "com.justinpbarnett.unity-mcp", "Python", "server.py")),
-            Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Library", "PackageCache", "com.justinpbarnett.unity-mcp@*", "Python", "server.py")),
-            Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Packages", "com.justinpbarnett.unity-mcp", "Python", "server.py"))
-        };
+        private List<string> possiblePaths = new List<string>();
+        
 
         [MenuItem("Window/Unity MCP")]
         public static void ShowWindow()
@@ -45,6 +40,15 @@ namespace UnityMCP.Editor.Windows
 
         private void OnEnable()
         {
+            var configPaths = new List<string>
+            {
+                Path.GetFullPath(Path.Combine(Application.dataPath, "unity-mcp", "Python", "server.py")),
+                Path.GetFullPath(Path.Combine(Application.dataPath, "Packages", "com.justinpbarnett.unity-mcp", "Python", "server.py")),
+                Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Library", "PackageCache", "com.justinpbarnett.unity-mcp@*", "Python", "server.py")),
+                Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Packages", "com.justinpbarnett.unity-mcp", "Python", "server.py"))
+            };
+            possiblePaths.AddRange(configPaths);
+            
             // Check initial states
             isUnityBridgeRunning = UnityMCPBridge.IsRunning;
             CheckPythonServerConnection();
