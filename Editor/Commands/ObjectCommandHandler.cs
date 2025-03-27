@@ -110,6 +110,7 @@ namespace UnityMCP.Editor.Commands
                     "TextMeshProUGUI" => typeof(TMPro.TextMeshProUGUI),
                     _ => Type.GetType($"UnityEngine.{componentType}") ??
                          Type.GetType(componentType) ??
+                         FindTypeInLoadedAssemblies(componentType) ??
                          throw new Exception($"Component type '{componentType}' not found.")
                 };
                 obj.AddComponent(type);
@@ -171,6 +172,7 @@ namespace UnityMCP.Editor.Commands
                     "TextMeshProUGUI" => typeof(TMPro.TextMeshProUGUI),
                     _ => Type.GetType($"UnityEngine.{componentType}") ??
                          Type.GetType(componentType) ??
+                         FindTypeInLoadedAssemblies(componentType) ??
                          throw new Exception($"Component type '{componentType}' not found.")
                 };
 
