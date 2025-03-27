@@ -148,10 +148,10 @@ def register_scene_tools(mcp: FastMCP):
     def create_object(
         ctx: Context,
         type: str = "CUBE",
-        name: str = None,
-        location: List[float] = None,
-        rotation: List[float] = None,
-        scale: List[float] = None,
+        name: str = Optional[None],
+        location: Optional[List[float]] = None,
+        rotation: Optional[List[float]] = None,
+        scale: Optional[List[float]] = None,
         replace_if_exists: bool = False
     ) -> str:
         """

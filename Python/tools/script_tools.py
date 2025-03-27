@@ -1,5 +1,5 @@
 from mcp.server.fastmcp import FastMCP, Context
-from typing import List
+from typing import List,Optional
 from unity_connection import get_unity_connection
 import base64
 
@@ -50,11 +50,11 @@ def register_script_tools(mcp: FastMCP):
         ctx: Context,
         script_name: str,
         script_type: str = "MonoBehaviour",
-        namespace: str = None,
-        template: str = None,
-        script_folder: str = None,
+        namespace: Optional[str] = None,
+        template: Optional[str] = None,
+        script_folder: Optional[str] = None,
         overwrite: bool = False,
-        content: str = None,
+        content: Optional[str] = None,
     ) -> str:
         """Create a new Unity script file.
 
@@ -208,7 +208,7 @@ def register_script_tools(mcp: FastMCP):
 
     @mcp.tool()
     def attach_script(
-        ctx: Context, object_name: str, script_name: str, script_path: str = None
+        ctx: Context, object_name: str, script_name: str, script_path: Optional[str] = None
     ) -> str:
         """Attach a script component to a GameObject.
 
