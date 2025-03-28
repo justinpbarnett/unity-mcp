@@ -1,6 +1,9 @@
 # Unity MCP Package
 
-[English](README.md) [🇨🇳简体中文](README_zh-CN.md)
+> 当前页面为中文版本
+
+| [English](README.md) | [🇨🇳简体中文](README_zh-CN.md) |
+|----------------------|---------------------------------|
 
 这是一个 Unity MCP Package，通过**模型上下文协议（MCP）**实现 Unity 与大语言模型（如 Claude Desktop）之间的无缝通信。MCP 服务器作为桥梁，允许 Unity 向 MCP 兼容的工具发送命令并接收响应，使得开发者能够自动化工作流、操作资源(Assets)并自动控制 Unity 编辑器。
 

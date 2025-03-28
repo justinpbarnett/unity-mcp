@@ -1,6 +1,7 @@
 # Unity MCP Package
 
-[English](README.md) [🇨🇳简体中文](README_zh-CN.md)
+| [English](README.md) | [🇨🇳简体中文](README_zh-CN.md) |
+|----------------------|---------------------------------|
 
 A Unity package that enables seamless communication between Unity and Large Language Models (LLMs) like Claude Desktop via the **Model Context Protocol (MCP)**. This server acts as a bridge, allowing Unity to send commands to and receive responses from MCP-compliant tools, empowering developers to automate workflows, manipulate assets, and control the Unity Editor programmatically.
 
