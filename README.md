@@ -41,7 +41,7 @@ uv is a Python package manager that simplifies dependency management. Install it
 - **Windows**:
 
   ```bash
-  powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+  powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
   ```
 
   Then, add uv to your PATH:
