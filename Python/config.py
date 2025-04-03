@@ -15,8 +15,8 @@ class ServerConfig:
     mcp_port: int = 6500
     
     # Connection settings
-    connection_timeout: float = 300.0  # 5 minutes timeout
-    buffer_size: int = 1024 * 1024  # 1MB buffer for localhost
+    connection_timeout: float = 86400.0  # 24 hours timeout
+    buffer_size: int = 16 * 1024 * 1024  # 16MB buffer
     
     # Logging settings
     log_level: str = "INFO"

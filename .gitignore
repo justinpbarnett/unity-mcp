@@ -28,3 +28,6 @@ wheels/
 
 # Markdown Meta
 *.md.meta
+
+# Aider files
+.aider*

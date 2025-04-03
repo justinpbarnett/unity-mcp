@@ -29,7 +29,9 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
         logger.warning(f"Could not connect to Unity on startup: {str(e)}")
         _unity_connection = None
     try:
-        yield {}
+        # Yield the connection object so it can be attached to the context
+        # The key 'bridge' matches how tools like read_console expect to access it (ctx.bridge)
+        yield {"bridge": _unity_connection}
     finally:
         if _unity_connection:
             _unity_connection.disconnect()
@@ -50,56 +52,19 @@ register_all_tools(mcp)
 
 @mcp.prompt()
 def asset_creation_strategy() -> str:
-    """Guide for creating and managing assets in Unity."""
+    """Guide for discovering and using Unity MCP tools effectively."""
     return (
-        "Unity MCP Server Tools and Best Practices:\n\n"
-        "1. **Editor Control**\n"
-        "   - `editor_action` - Performs editor-wide actions such as `PLAY`, `PAUSE`, `STOP`, `BUILD`, `SAVE`\n"
-        "   - `read_console(show_logs=True, show_warnings=True, show_errors=True, search_term=None)` - Read and filter Unity Console logs\n"
-        "2. **Scene Management**\n"
-        "   - `get_current_scene()`, `get_scene_list()` - Get scene details\n"
-        "   - `open_scene(path)`, `save_scene(path)` - Open/save scenes\n"
-        "   - `new_scene(path)`, `change_scene(path, save_current)` - Create/switch scenes\n\n"
-        "3. **Object Management**\n"
-        "   - ALWAYS use `find_objects_by_name(name)` to check if an object exists before creating or modifying it\n"
-        "   - `create_object(name, type)` - Create objects (e.g. `CUBE`, `SPHERE`, `EMPTY`, `CAMERA`)\n"
-        "   - `delete_object(name)` - Remove objects\n"
-        "   - `set_object_transform(name, location, rotation, scale)` - Modify object position, rotation, and scale\n"
-        "   - `add_component(name, component_type)` - Add components to objects (e.g. `Rigidbody`, `BoxCollider`)\n"
-        "   - `remove_component(name, component_type)` - Remove components from objects\n"
-        "   - `get_object_properties(name)` - Get object properties\n"
-        "   - `find_objects_by_name(name)` - Find objects by name\n"
-        "   - `get_hierarchy()` - Get object hierarchy\n"
-        "4. **Script Management**\n"
-        "   - ALWAYS use `list_scripts(folder_path)` or `view_script(path)` to check if a script exists before creating or updating it\n"
-        "   - `create_script(name, type, namespace, template)` - Create scripts\n"
-        "   - `view_script(path)`, `update_script(path, content)` - View/modify scripts\n"
-        "   - `attach_script(object_name, script_name)` - Add scripts to objects\n"
-        "   - `list_scripts(folder_path)` - List scripts in folder\n\n"
-        "5. **Asset Management**\n"
-        "   - ALWAYS use `get_asset_list(type, search_pattern, folder)` to check if an asset exists before creating or importing it\n"
-        "   - `import_asset(source_path, target_path)` - Import external assets\n"
-        "   - `instantiate_prefab(path, pos_x, pos_y, pos_z, rot_x, rot_y, rot_z)` - Create prefab instances\n"
-        "   - `create_prefab(object_name, path)`, `apply_prefab(object_name, path)` - Manage prefabs\n"
-        "   - `get_asset_list(type, search_pattern, folder)` - List project assets\n"
-        "   - Use relative paths for Unity assets (e.g., 'Assets/Models/MyModel.fbx')\n"
-        "   - Use absolute paths for external files\n\n"
-        "6. **Material Management**\n"
-        "   - ALWAYS check if a material exists before creating or modifying it\n"
-        "   - `set_material(object_name, material_name, color)` - Apply/create materials\n"
-        "   - Use RGB colors (0.0-1.0 range)\n\n"
-        "7. **Best Practices**\n"
-        "   - ALWAYS verify existence before creating or updating any objects, scripts, assets, or materials\n"
-        "   - Use meaningful names for objects and scripts\n"
-        "   - Keep scripts organized in folders with namespaces\n"
-        "   - Verify changes after modifications\n"
-        "   - Save scenes before major changes\n"
-        "   - Use full component names (e.g., 'Rigidbody', 'BoxCollider')\n"
-        "   - Provide correct value types for properties\n"
-        "   - Keep prefabs in dedicated folders\n"
-        "   - Regularly apply prefab changes\n"
-        "   - Monitor console logs for errors and warnings\n"
-        "   - Use search terms to filter console output when debugging\n"
+        "Available Unity MCP Server Tools:\\n\\n"
+        "- `manage_editor`: Controls editor state and queries info.\\n"
+        "- `execute_menu_item`: Executes Unity Editor menu items by path.\\n"
+        "- `read_console`: Reads or clears Unity console messages, with filtering options.\\n"
+        "- `manage_scene`: Manages scenes.\\n"
+        "- `manage_gameobject`: Manages GameObjects in the scene.\\n"
+        "- `manage_script`: Manages C# script files.\\n"
+        "- `manage_asset`: Manages prefabs and assets.\\n\\n"
+        "Tips:\\n"
+        "- Create prefabs for reusable GameObjects.\\n"
+        "- Always include a camera and main light in your scenes.\\n"
     )
 
 # Run the server

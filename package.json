@@ -1,11 +1,10 @@
 {
   "name": "com.justinpbarnett.unity-mcp",
-  "version": "0.1.4",
+  "version": "1.0.1",
   "displayName": "Unity MCP",
   "description": "A Unity package to communicate with a local MCP Client via a Python server.",
   "unity": "2020.3",
   "dependencies": {
-    "com.unity.nuget.newtonsoft-json": "3.0.2",
-    "com.unity.render-pipelines.universal": "10.10.1"
+    "com.unity.nuget.newtonsoft-json": "3.0.2"
   }
 }

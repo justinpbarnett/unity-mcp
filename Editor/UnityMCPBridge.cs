@@ -10,7 +10,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.IO;
 using UnityMCP.Editor.Models;
-using UnityMCP.Editor.Commands;
+using UnityMCP.Editor.Tools;
 
 namespace UnityMCP.Editor
 {
@@ -269,59 +269,47 @@ namespace UnityMCP.Editor
                 }
 
                 // Handle ping command for connection verification
-                if (command.type == "ping")
+                if (command.type.Equals("ping", StringComparison.OrdinalIgnoreCase))
                 {
                     var pingResponse = new { status = "success", result = new { message = "pong" } };
                     return JsonConvert.SerializeObject(pingResponse);
                 }
 
+                // Use JObject for parameters as the new handlers likely expect this
+                JObject paramsObject = command.@params ?? new JObject();
+
+                // Route command based on the new tool structure from the refactor plan
                 object result = command.type switch
                 {
-                    "GET_SCENE_INFO" => SceneCommandHandler.GetSceneInfo(),
-                    "OPEN_SCENE" => SceneCommandHandler.OpenScene(command.@params),
-                    "SAVE_SCENE" => SceneCommandHandler.SaveScene(),
-                    "NEW_SCENE" => SceneCommandHandler.NewScene(command.@params),
-                    "CHANGE_SCENE" => SceneCommandHandler.ChangeScene(command.@params),
-                    "GET_OBJECT_INFO" => ObjectCommandHandler.GetObjectInfo(command.@params),
-                    "CREATE_OBJECT" => ObjectCommandHandler.CreateObject(command.@params),
-                    "MODIFY_OBJECT" => ObjectCommandHandler.ModifyObject(command.@params),
-                    "DELETE_OBJECT" => ObjectCommandHandler.DeleteObject(command.@params),
-                    "EXECUTE_CONTEXT_MENU_ITEM" => ObjectCommandHandler.ExecuteContextMenuItem(command.@params),
-                    "GET_OBJECT_PROPERTIES" => ObjectCommandHandler.GetObjectProperties(command.@params),
-                    "GET_COMPONENT_PROPERTIES" => ObjectCommandHandler.GetComponentProperties(command.@params),
-                    "FIND_OBJECTS_BY_NAME" => ObjectCommandHandler.FindObjectsByName(command.@params),
-                    "FIND_OBJECTS_BY_TAG" => ObjectCommandHandler.FindObjectsByTag(command.@params),
-                    "GET_HIERARCHY" => ObjectCommandHandler.GetHierarchy(),
-                    "SELECT_OBJECT" => ObjectCommandHandler.SelectObject(command.@params),
-                    "GET_SELECTED_OBJECT" => ObjectCommandHandler.GetSelectedObject(),
-                    "SET_MATERIAL" => MaterialCommandHandler.SetMaterial(command.@params),
-                    "VIEW_SCRIPT" => ScriptCommandHandler.ViewScript(command.@params),
-                    "CREATE_SCRIPT" => ScriptCommandHandler.CreateScript(command.@params),
-                    "UPDATE_SCRIPT" => ScriptCommandHandler.UpdateScript(command.@params),
-                    "LIST_SCRIPTS" => ScriptCommandHandler.ListScripts(command.@params),
-                    "ATTACH_SCRIPT" => ScriptCommandHandler.AttachScript(command.@params),
-                    "IMPORT_ASSET" => AssetCommandHandler.ImportAsset(command.@params),
-                    "INSTANTIATE_PREFAB" => AssetCommandHandler.InstantiatePrefab(command.@params),
-                    "CREATE_PREFAB" => AssetCommandHandler.CreatePrefab(command.@params),
-                    "APPLY_PREFAB" => AssetCommandHandler.ApplyPrefab(command.@params),
-                    "GET_ASSET_LIST" => AssetCommandHandler.GetAssetList(command.@params),
-                    "EDITOR_CONTROL" => EditorControlHandler.HandleEditorControl(command.@params),
-                    _ => throw new Exception($"Unknown command type: {command.type}")
+                    // Maps the command type (tool name) to the corresponding handler's static HandleCommand method
+                    // Assumes each handler class has a static method named 'HandleCommand' that takes JObject parameters
+                    "manage_script" => ManageScript.HandleCommand(paramsObject),
+                    "manage_scene" => ManageScene.HandleCommand(paramsObject),
+                    "manage_editor" => ManageEditor.HandleCommand(paramsObject),
+                    "manage_gameobject" => ManageGameObject.HandleCommand(paramsObject),
+                    "manage_asset" => ManageAsset.HandleCommand(paramsObject),
+                    "read_console" => ReadConsole.HandleCommand(paramsObject),
+                    "execute_menu_item" => ExecuteMenuItem.HandleCommand(paramsObject),
+                    _ => throw new ArgumentException($"Unknown or unsupported command type: {command.type}")
                 };
 
+                // Standard success response format
                 var response = new { status = "success", result };
                 return JsonConvert.SerializeObject(response);
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Error executing command {command.type}: {ex.Message}\n{ex.StackTrace}");
+                // Log the detailed error in Unity for debugging
+                Debug.LogError($"Error executing command '{command?.type ?? "Unknown"}': {ex.Message}\n{ex.StackTrace}");
+
+                // Standard error response format
                 var response = new
                 {
                     status = "error",
-                    error = ex.Message,
-                    command = command.type,
-                    stackTrace = ex.StackTrace,
-                    paramsSummary = command.@params != null ? GetParamsSummary(command.@params) : "No parameters"
+                    error = ex.Message, // Provide the specific error message
+                    command = command?.type ?? "Unknown", // Include the command type if available
+                    stackTrace = ex.StackTrace, // Include stack trace for detailed debugging
+                    paramsSummary = command?.@params != null ? GetParamsSummary(command.@params) : "No parameters" // Summarize parameters for context
                 };
                 return JsonConvert.SerializeObject(response);
             }

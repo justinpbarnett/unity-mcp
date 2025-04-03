@@ -125,10 +125,27 @@ class UnityConnection:
         # Normal command handling
         command = {"type": command_type, "params": params or {}}
         try:
-            logger.info(f"Sending command: {command_type} with params: {params}")
-            self.sock.sendall(json.dumps(command).encode('utf-8'))
+            # Check for very large content that might cause JSON issues
+            command_size = len(json.dumps(command))
+            
+            if command_size > config.buffer_size / 2:
+                logger.warning(f"Large command detected ({command_size} bytes). This might cause issues.")
+                
+            logger.info(f"Sending command: {command_type} with params size: {command_size} bytes")
+            
+            # Ensure we have a valid JSON string before sending
+            command_json = json.dumps(command, ensure_ascii=False)
+            self.sock.sendall(command_json.encode('utf-8'))
+            
             response_data = self.receive_full_response(self.sock)
-            response = json.loads(response_data.decode('utf-8'))
+            try:
+                response = json.loads(response_data.decode('utf-8'))
+            except json.JSONDecodeError as je:
+                logger.error(f"JSON decode error: {str(je)}")
+                # Log partial response for debugging
+                partial_response = response_data.decode('utf-8')[:500] + "..." if len(response_data) > 500 else response_data.decode('utf-8')
+                logger.error(f"Partial response: {partial_response}")
+                raise Exception(f"Invalid JSON response from Unity: {str(je)}")
             
             if response.get("status") == "error":
                 error_message = response.get("error") or response.get("message", "Unknown Unity error")
