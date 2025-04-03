@@ -25,4 +25,9 @@ wheels/
 # IDE
 .idea/
 .vscode/
+
+# Markdown Meta
+*.md.meta
+
+# Aider files
 .aider*
