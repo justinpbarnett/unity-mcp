@@ -68,6 +68,10 @@ For alternative installation methods, see the [uv installation guide](https://do
 
 Once installed, the Unity MCP Package will be available in your Unity project. The server will start automatically when used with an MCP client like Claude Desktop or Cursor.
 
+### Step 4: Automatically configure Claude or Cursor
+
+<img width="622" alt="image" src="https://github.com/user-attachments/assets/e6fde1d0-d1fe-4e59-b22e-52f1434ca009" />
+
 ## Features
 
 - **Bidirectional Communication**: Seamlessly send and receive data between Unity and LLMs.
