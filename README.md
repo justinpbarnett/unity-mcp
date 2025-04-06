@@ -71,7 +71,7 @@ Once installed, the Unity MCP Package will be available in your Unity project. T
 
 ### Step 4: Automatically configure Cursor or Claude desktop
 
-<img width="609" alt="image" src="https://github.com/user-attachments/assets/af25e4d3-961d-4600-939f-8fb95b9398cd" />
+<img width="609" alt="image" src="https://github.com/user-attachments/assets/cef3a639-4677-4fd8-84e7-2d82a04d55bb" />
 
 ## Features
 
