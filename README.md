@@ -65,12 +65,13 @@ For alternative installation methods, see the [uv installation guide](https://do
 1. Open Unity and go to `Window > Package Manager`.
 2. Click the `+` button and select `Add package from git URL`.
 3. Enter: `https://github.com/justinpbarnett/unity-mcp.git`
+4. If failed, download this repo, switch to `Add package from disk` and select package.json, to install the package.
 
 Once installed, the Unity MCP Package will be available in your Unity project. The server will start automatically when used with an MCP client like Claude Desktop or Cursor.
 
-### Step 4: Automatically configure Claude or Cursor
+### Step 4: Automatically configure Cursor or Claude desktop
 
-<img width="622" alt="image" src="https://github.com/user-attachments/assets/e6fde1d0-d1fe-4e59-b22e-52f1434ca009" />
+<img width="609" alt="image" src="https://github.com/user-attachments/assets/af25e4d3-961d-4600-939f-8fb95b9398cd" />
 
 ## Features
 
