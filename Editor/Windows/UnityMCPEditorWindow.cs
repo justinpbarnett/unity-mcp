@@ -31,10 +31,10 @@ namespace UnityMCP.Editor.Windows
 
         private List<string> possiblePaths = new()
         {
-            Path.GetFullPath(Path.Combine(Application.dataPath, "unity-mcp", "Python", "server.py")),
-            Path.GetFullPath(Path.Combine(Application.dataPath, "Packages", "com.justinpbarnett.unity-mcp", "Python", "server.py")),
-            Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Library", "PackageCache", "com.justinpbarnett.unity-mcp@*", "Python", "server.py")),
-            Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Packages", "com.justinpbarnett.unity-mcp", "Python", "server.py"))
+            Path.GetFullPath(Path.Combine(Application.dataPath, "unity-mcp", "Python~", "server.py")),
+            Path.GetFullPath(Path.Combine(Application.dataPath, "Packages", "com.justinpbarnett.unity-mcp", "Python~", "server.py")),
+            Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Library", "PackageCache", "com.justinpbarnett.unity-mcp@*", "Python~", "server.py")),
+            Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Packages", "com.justinpbarnett.unity-mcp", "Python~", "server.py"))
         };
 
         [MenuItem("Window/Unity MCP")]
@@ -342,7 +342,7 @@ namespace UnityMCP.Editor.Windows
 
                     foreach (var dir in matchingDirs)
                     {
-                        string candidatePath = Path.Combine(dir, "Python", "server.py");
+                        string candidatePath = Path.Combine(dir, "Python~", "server.py");
 
                         if (File.Exists(candidatePath))
                         {
@@ -457,7 +457,7 @@ namespace UnityMCP.Editor.Windows
 
         private string FindPackagePythonDirectory()
         {
-            string pythonDir = "/path/to/your/unity-mcp/Python";
+            string pythonDir = "/path/to/your/unity-mcp/Python~";
 
             try
             {
@@ -472,7 +472,7 @@ namespace UnityMCP.Editor.Windows
                         if (package.name == "com.justinpbarnett.unity-mcp")
                         {
                             string packagePath = package.resolvedPath;
-                            string potentialPythonDir = Path.Combine(packagePath, "Python");
+                        string potentialPythonDir = Path.Combine(packagePath, "Python~");
 
                             if (Directory.Exists(potentialPythonDir) &&
                                 File.Exists(Path.Combine(potentialPythonDir, "server.py")))
@@ -490,7 +490,7 @@ namespace UnityMCP.Editor.Windows
                 // If not found via Package Manager, try manual approaches
                 // First check for local installation
                 string[] possibleDirs = {
-                    Path.GetFullPath(Path.Combine(Application.dataPath, "unity-mcp", "Python"))
+                    Path.GetFullPath(Path.Combine(Application.dataPath, "unity-mcp", "Python~"))
                 };
 
                 foreach (var dir in possibleDirs)
