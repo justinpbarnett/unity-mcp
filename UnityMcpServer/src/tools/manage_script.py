@@ -66,6 +66,8 @@ def register_manage_script_tools(mcp: FastMCP):
                     del response["data"]["contentsEncoded"]
                 
                 return {"success": True, "message": response.get("message", "Operation successful."), "data": response.get("data")}
+            elif response.get("revise_needed"):
+                return {"success": False, "message": response.get("message"), "data": response.get("data")}
             else:
                 return {"success": False, "message": response.get("error", "An unknown error occurred.")}
 

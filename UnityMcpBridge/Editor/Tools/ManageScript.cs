@@ -7,6 +7,10 @@ using UnityEditor;
 using UnityEngine;
 using UnityMcpBridge.Editor.Helpers;
 
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using System.Collections.Generic;
+
 namespace UnityMcpBridge.Editor.Tools
 {
     /// <summary>
@@ -244,10 +248,21 @@ namespace UnityMcpBridge.Editor.Tools
             }
 
             // Validate syntax (basic check)
-            if (!ValidateScriptSyntax(contents))
+            if (!ValidateScriptSyntax(contents) && ValidateScriptSyntax(contents, out var errors))
             {
-                Debug.LogWarning($"Potential syntax error in script being updated: {name}");
+                // Optionally return a specific error or warning about syntax
+                // return Response.Error("Provided script content has potential syntax errors.");
+                 Debug.LogWarning($"Potential syntax error in script being updated: {name}");
                 // Consider if this should be a hard error or just a warning
+                // Log errors to console for debugging
+                foreach (var error in errors)
+                {
+                    Debug.LogError($"Syntax error in script '{name}': {error}");
+                }
+                return Response.ReviseNeeded(
+                    $"Script '{name}.cs' has potential syntax errors. Please revise.",
+                    new { errors = errors }
+                );
             }
 
             try
@@ -381,6 +396,32 @@ namespace UnityMcpBridge.Editor.Tools
             return braceBalance == 0;
             // This is extremely basic. A real C# parser/compiler check would be ideal
             // but is complex to implement directly here.
+        }
+
+        /// <summary>
+        /// Performs syntax validation using Roslyn (C# compiler platform).
+        /// </summary>
+        public static bool ValidateScriptSyntax(string contents, out List<string> errors)
+        {
+            errors = new List<string>();
+
+            if (string.IsNullOrWhiteSpace(contents))
+                return true; // empty content considered valid
+
+            SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(contents);
+            var diagnostics = syntaxTree.GetDiagnostics();
+
+            bool hasErrors = diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error);
+
+            if (hasErrors)
+            {
+                errors = diagnostics
+                    .Where(d => d.Severity == DiagnosticSeverity.Error)
+                    .Select(d => d.ToString())
+                    .ToList();
+            }
+
+            return !hasErrors;
         }
     }
 }
