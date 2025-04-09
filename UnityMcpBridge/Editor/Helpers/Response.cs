@@ -55,6 +55,24 @@ namespace UnityMcpBridge.Editor.Helpers
                 return new { success = false, error = errorMessage };
             }
         }
+
+        /// <summary>
+        /// Creates a standardized revise-needed response object.
+        /// </summary>
+        /// <param name="message">A message describing the need for revision.</param>
+        /// <param name="data">Optional additional data to include in the response.</param>
+        /// <returns>An object representing the revise-needed response.</returns>
+        public static object ReviseNeeded(string message, object data = null)
+        {
+            if (data != null)
+            {
+                return new { success = false, revise_needed = true, message = message, data = data };
+            }
+            else
+            {
+                return new { success = false, revise_needed = true, message = message };
+            }
+        }
     }
 }
 
