@@ -18,10 +18,6 @@ namespace UnityMcpBridge.Editor.Windows
     {
         private bool isUnityBridgeRunning = false;
         private Vector2 scrollPosition;
-        private string claudeConfigStatus = "Not configured";
-        private string cursorConfigStatus = "Not configured";
-        private string pythonServerStatus = "Not Connected";
-        private Color pythonServerStatusColor = Color.red;
         private const int unityPort = 6400; // Hardcoded Unity port
         private const int mcpPort = 6500; // Hardcoded MCP port
         private McpClients mcpClients = new();
@@ -189,26 +185,6 @@ namespace UnityMcpBridge.Editor.Windows
                 "MCP Editor",
                 EditorStyles.boldLabel
             );
-            EditorGUILayout.Space(10);
-
-            // Python Server Status Section
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.LabelField("Python Server Status", EditorStyles.boldLabel);
-
-            // Status indicator with colored dot
-            var statusRect = EditorGUILayout.BeginHorizontal(GUILayout.Height(20));
-            DrawStatusDot(statusRect, pythonServerStatusColor);
-            EditorGUILayout.LabelField("      " + pythonServerStatus);
-            EditorGUILayout.EndHorizontal();
-
-            EditorGUILayout.LabelField($"Unity Port: {unityPort}");
-            EditorGUILayout.LabelField($"MCP Port: {mcpPort}");
-            EditorGUILayout.HelpBox(
-                "Your MCP client (e.g. Cursor or Claude Desktop) will start the server automatically when you start it.",
-                MessageType.Info
-            );
-            EditorGUILayout.EndVertical();
-
             EditorGUILayout.Space(10);
 
             // Unity Bridge Section
