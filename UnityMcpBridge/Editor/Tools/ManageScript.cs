@@ -1,17 +1,19 @@
+using UnityEngine;
+using UnityEditor;
+using Newtonsoft.Json.Linq;
 using System;
 using System.IO;
-using System.Linq;
 using System.Text.RegularExpressions;
-using Newtonsoft.Json.Linq;
-using UnityEditor;
-using UnityEngine;
-using UnityMcpBridge.Editor.Helpers;
+using System.Linq;
+using UnityMCP.Editor.Helpers;
 
+#if USE_ROSLYN
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using System.Collections.Generic;
+#endif
 
-namespace UnityMcpBridge.Editor.Tools
+namespace UnityMCP.Editor.Tools
 {
     /// <summary>
     /// Handles CRUD operations for C# scripts within the Unity project.
@@ -28,7 +30,7 @@ namespace UnityMcpBridge.Editor.Tools
             string name = @params["name"]?.ToString();
             string path = @params["path"]?.ToString(); // Relative to Assets/
             string contents = null;
-
+            
             // Check if we have base64 encoded contents
             bool contentsEncoded = @params["contentsEncoded"]?.ToObject<bool>() ?? false;
             if (contentsEncoded && @params["encodedContents"] != null)
@@ -46,7 +48,7 @@ namespace UnityMcpBridge.Editor.Tools
             {
                 contents = @params["contents"]?.ToString();
             }
-
+            
             string scriptType = @params["scriptType"]?.ToString(); // For templates/validation
             string namespaceName = @params["namespace"]?.ToString(); // For organizing code
 
@@ -62,9 +64,7 @@ namespace UnityMcpBridge.Editor.Tools
             // Basic name validation (alphanumeric, underscores, cannot start with number)
             if (!Regex.IsMatch(name, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
             {
-                return Response.Error(
-                    $"Invalid script name: '{name}'. Use only letters, numbers, underscores, and don't start with a number."
-                );
+                return Response.Error($"Invalid script name: '{name}'. Use only letters, numbers, underscores, and don't start with a number.");
             }
 
             // Ensure path is relative to Assets/, removing any leading "Assets/"
@@ -79,18 +79,16 @@ namespace UnityMcpBridge.Editor.Tools
                 }
             }
             // Handle empty string case explicitly after processing
-            if (string.IsNullOrEmpty(relativeDir))
-            {
-                relativeDir = "Scripts"; // Ensure default if path was provided as "" or only "/" or "Assets/"
+            if (string.IsNullOrEmpty(relativeDir)) {
+                 relativeDir = "Scripts"; // Ensure default if path was provided as "" or only "/" or "Assets/"
             }
 
             // Construct paths
             string scriptFileName = $"{name}.cs";
             string fullPathDir = Path.Combine(Application.dataPath, relativeDir); // Application.dataPath ends in "Assets"
             string fullPath = Path.Combine(fullPathDir, scriptFileName);
-            string relativePath = Path.Combine("Assets", relativeDir, scriptFileName)
-                .Replace('\\', '/'); // Ensure "Assets/" prefix and forward slashes
-
+            string relativePath = Path.Combine("Assets", relativeDir, scriptFileName).Replace('\\', '/'); // Ensure "Assets/" prefix and forward slashes
+            
             // Ensure the target directory exists for create/update
             if (action == "create" || action == "update")
             {
@@ -100,24 +98,15 @@ namespace UnityMcpBridge.Editor.Tools
                 }
                 catch (Exception e)
                 {
-                    return Response.Error(
-                        $"Could not create directory '{fullPathDir}': {e.Message}"
-                    );
+                    return Response.Error($"Could not create directory '{fullPathDir}': {e.Message}");
                 }
             }
-
+            
             // Route to specific action handlers
             switch (action)
             {
                 case "create":
-                    return CreateScript(
-                        fullPath,
-                        relativePath,
-                        name,
-                        contents,
-                        scriptType,
-                        namespaceName
-                    );
+                    return CreateScript(fullPath, relativePath, name, contents, scriptType, namespaceName);
                 case "read":
                     return ReadScript(fullPath, relativePath);
                 case "update":
@@ -125,9 +114,7 @@ namespace UnityMcpBridge.Editor.Tools
                 case "delete":
                     return DeleteScript(fullPath, relativePath);
                 default:
-                    return Response.Error(
-                        $"Unknown action: '{action}'. Valid actions are: create, read, update, delete."
-                    );
+                    return Response.Error($"Unknown action: '{action}'. Valid actions are: create, read, update, delete.");
             }
         }
 
@@ -149,21 +136,12 @@ namespace UnityMcpBridge.Editor.Tools
             return Convert.ToBase64String(data);
         }
 
-        private static object CreateScript(
-            string fullPath,
-            string relativePath,
-            string name,
-            string contents,
-            string scriptType,
-            string namespaceName
-        )
+        private static object CreateScript(string fullPath, string relativePath, string name, string contents, string scriptType, string namespaceName)
         {
             // Check if script already exists
             if (File.Exists(fullPath))
             {
-                return Response.Error(
-                    $"Script already exists at '{relativePath}'. Use 'update' action to modify."
-                );
+                return Response.Error($"Script already exists at '{relativePath}'. Use 'update' action to modify.");
             }
 
             // Generate default content if none provided
@@ -173,22 +151,34 @@ namespace UnityMcpBridge.Editor.Tools
             }
 
             // Validate syntax (basic check)
+            #if USE_ROSLYN
+            if (!ValidateScriptSyntax(contents) && ValidateScriptSyntax(contents, out var errors))
+            {
+                // Optionally return a specific error or warning about syntax
+                // return Response.Error("Provided script content has potential syntax errors.");
+                Debug.LogWarning($"Potential syntax error in script being created: {name}");
+                // Log errors to console for debugging
+                foreach (var error in errors)
+                {
+                    Debug.LogError($"Syntax error in script '{name}': {error}");
+                }
+                return Response.ReviseNeeded($"Script content has potential syntax errors: {string.Join(", ", errors)}");
+            }
+            #else 
             if (!ValidateScriptSyntax(contents))
             {
                 // Optionally return a specific error or warning about syntax
                 // return Response.Error("Provided script content has potential syntax errors.");
                 Debug.LogWarning($"Potential syntax error in script being created: {name}");
             }
+            #endif
 
             try
             {
                 File.WriteAllText(fullPath, contents);
                 AssetDatabase.ImportAsset(relativePath);
                 AssetDatabase.Refresh(); // Ensure Unity recognizes the new script
-                return Response.Success(
-                    $"Script '{name}.cs' created successfully at '{relativePath}'.",
-                    new { path = relativePath }
-                );
+                return Response.Success($"Script '{name}.cs' created successfully at '{relativePath}'.", new { path = relativePath });
             }
             catch (Exception e)
             {
@@ -206,22 +196,18 @@ namespace UnityMcpBridge.Editor.Tools
             try
             {
                 string contents = File.ReadAllText(fullPath);
-
+                
                 // Return both normal and encoded contents for larger files
                 bool isLarge = contents.Length > 10000; // If content is large, include encoded version
-                var responseData = new
-                {
-                    path = relativePath,
+                var responseData = new {
+                    path = relativePath, 
                     contents = contents,
                     // For large files, also include base64-encoded version
                     encodedContents = isLarge ? EncodeBase64(contents) : null,
-                    contentsEncoded = isLarge,
+                    contentsEncoded = isLarge
                 };
-
-                return Response.Success(
-                    $"Script '{Path.GetFileName(relativePath)}' read successfully.",
-                    responseData
-                );
+                
+                return Response.Success($"Script '{Path.GetFileName(relativePath)}' read successfully.", responseData);
             }
             catch (Exception e)
             {
@@ -229,18 +215,11 @@ namespace UnityMcpBridge.Editor.Tools
             }
         }
 
-        private static object UpdateScript(
-            string fullPath,
-            string relativePath,
-            string name,
-            string contents
-        )
+        private static object UpdateScript(string fullPath, string relativePath, string name, string contents)
         {
             if (!File.Exists(fullPath))
             {
-                return Response.Error(
-                    $"Script not found at '{relativePath}'. Use 'create' action to add a new script."
-                );
+                return Response.Error($"Script not found at '{relativePath}'. Use 'create' action to add a new script.");
             }
             if (string.IsNullOrEmpty(contents))
             {
@@ -248,32 +227,34 @@ namespace UnityMcpBridge.Editor.Tools
             }
 
             // Validate syntax (basic check)
+            #if USE_ROSLYN
             if (!ValidateScriptSyntax(contents) && ValidateScriptSyntax(contents, out var errors))
             {
                 // Optionally return a specific error or warning about syntax
                 // return Response.Error("Provided script content has potential syntax errors.");
-                 Debug.LogWarning($"Potential syntax error in script being updated: {name}");
-                // Consider if this should be a hard error or just a warning
+                Debug.LogWarning($"Potential syntax error in script being created: {name}");
                 // Log errors to console for debugging
                 foreach (var error in errors)
                 {
                     Debug.LogError($"Syntax error in script '{name}': {error}");
                 }
-                return Response.ReviseNeeded(
-                    $"Script '{name}.cs' has potential syntax errors. Please revise.",
-                    new { errors = errors }
-                );
+                return Response.ReviseNeeded($"Script content has potential syntax errors: {string.Join(", ", errors)}");
             }
+            #else 
+            if (!ValidateScriptSyntax(contents))
+            {
+                // Optionally return a specific error or warning about syntax
+                // return Response.Error("Provided script content has potential syntax errors.");
+                Debug.LogWarning($"Potential syntax error in script being created: {name}");
+            }
+            #endif
 
             try
             {
                 File.WriteAllText(fullPath, contents);
                 AssetDatabase.ImportAsset(relativePath); // Re-import to reflect changes
                 AssetDatabase.Refresh();
-                return Response.Success(
-                    $"Script '{name}.cs' updated successfully at '{relativePath}'.",
-                    new { path = relativePath }
-                );
+                return Response.Success($"Script '{name}.cs' updated successfully at '{relativePath}'.", new { path = relativePath });
             }
             catch (Exception e)
             {
@@ -295,16 +276,12 @@ namespace UnityMcpBridge.Editor.Tools
                 if (deleted)
                 {
                     AssetDatabase.Refresh();
-                    return Response.Success(
-                        $"Script '{Path.GetFileName(relativePath)}' moved to trash successfully."
-                    );
+                    return Response.Success($"Script '{Path.GetFileName(relativePath)}' moved to trash successfully.");
                 }
                 else
                 {
                     // Fallback or error if MoveAssetToTrash fails
-                    return Response.Error(
-                        $"Failed to move script '{relativePath}' to trash. It might be locked or in use."
-                    );
+                    return Response.Error($"Failed to move script '{relativePath}' to trash. It might be locked or in use.");
                 }
             }
             catch (Exception e)
@@ -316,16 +293,11 @@ namespace UnityMcpBridge.Editor.Tools
         /// <summary>
         /// Generates basic C# script content based on name and type.
         /// </summary>
-        private static string GenerateDefaultScriptContent(
-            string name,
-            string scriptType,
-            string namespaceName
-        )
+        private static string GenerateDefaultScriptContent(string name, string scriptType, string namespaceName)
         {
             string usingStatements = "using UnityEngine;\nusing System.Collections;\n";
             string classDeclaration;
-            string body =
-                "\n    // Use this for initialization\n    void Start() {\n\n    }\n\n    // Update is called once per frame\n    void Update() {\n\n    }\n";
+            string body = "\n    // Use this for initialization\n    void Start() {\n\n    }\n\n    // Update is called once per frame\n    void Update() {\n\n    }\n";
 
             string baseClass = "";
             if (!string.IsNullOrEmpty(scriptType))
@@ -337,10 +309,7 @@ namespace UnityMcpBridge.Editor.Tools
                     baseClass = " : ScriptableObject";
                     body = ""; // ScriptableObjects don't usually need Start/Update
                 }
-                else if (
-                    scriptType.Equals("Editor", StringComparison.OrdinalIgnoreCase)
-                    || scriptType.Equals("EditorWindow", StringComparison.OrdinalIgnoreCase)
-                )
+                else if (scriptType.Equals("Editor", StringComparison.OrdinalIgnoreCase) || scriptType.Equals("EditorWindow", StringComparison.OrdinalIgnoreCase))
                 {
                     usingStatements += "using UnityEditor;\n";
                     if (scriptType.Equals("Editor", StringComparison.OrdinalIgnoreCase))
@@ -381,16 +350,13 @@ namespace UnityMcpBridge.Editor.Tools
         /// </summary>
         private static bool ValidateScriptSyntax(string contents)
         {
-            if (string.IsNullOrEmpty(contents))
-                return true; // Empty is technically valid?
+            if (string.IsNullOrEmpty(contents)) return true; // Empty is technically valid?
 
             int braceBalance = 0;
             foreach (char c in contents)
             {
-                if (c == '{')
-                    braceBalance++;
-                else if (c == '}')
-                    braceBalance--;
+                if (c == '{') braceBalance++;
+                else if (c == '}') braceBalance--;
             }
 
             return braceBalance == 0;
@@ -401,6 +367,7 @@ namespace UnityMcpBridge.Editor.Tools
         /// <summary>
         /// Performs syntax validation using Roslyn (C# compiler platform).
         /// </summary>
+        #if USE_ROSLYN
         public static bool ValidateScriptSyntax(string contents, out List<string> errors)
         {
             errors = new List<string>();
@@ -423,6 +390,6 @@ namespace UnityMcpBridge.Editor.Tools
 
             return !hasErrors;
         }
+        #endif
     }
-}
-
+} 
