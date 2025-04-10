@@ -2,13 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Newtonsoft.Json; // Added for JsonSerializationException
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEditorInternal;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityMcpBridge.Editor.Helpers; // For Response class
+using UnityMcpBridge.Editor.Helpers; // For Response class AND GameObjectSerializer
+using UnityMcpBridge.Runtime.Serialization; // <<< Keep for Converters access? Might not be needed here directly
 
 namespace UnityMcpBridge.Editor.Tools
 {
@@ -21,6 +23,11 @@ namespace UnityMcpBridge.Editor.Tools
 
         public static object HandleCommand(JObject @params)
         {
+            // --- DEBUG --- Log the raw parameter value ---
+            // JToken rawIncludeFlag = @params["includeNonPublicSerialized"];
+            // Debug.Log($"[HandleCommand Debug] Raw includeNonPublicSerialized parameter: Type={rawIncludeFlag?.Type.ToString() ?? "Null"}, Value={rawIncludeFlag?.ToString() ?? "N/A"}");
+            // --- END DEBUG ---
+
             string action = @params["action"]?.ToString().ToLower();
             if (string.IsNullOrEmpty(action))
             {
@@ -36,6 +43,10 @@ namespace UnityMcpBridge.Editor.Tools
             string tag = @params["tag"]?.ToString();
             string layer = @params["layer"]?.ToString();
             JToken parentToken = @params["parent"];
+
+            // --- Add parameter for controlling non-public field inclusion ---
+            bool includeNonPublicSerialized = @params["includeNonPublicSerialized"]?.ToObject<bool>() ?? true; // Default to true
+            // --- End add parameter ---
 
             // --- Prefab Redirection Check ---
             string targetPath =
@@ -125,7 +136,8 @@ namespace UnityMcpBridge.Editor.Tools
                             return Response.Error(
                                 "'target' parameter required for get_components."
                             );
-                        return GetComponentsFromTarget(getCompTarget, searchMethod);
+                        // Pass the includeNonPublicSerialized flag here
+                        return GetComponentsFromTarget(getCompTarget, searchMethod, includeNonPublicSerialized);
                     case "add_component":
                         return AddComponentToTarget(@params, targetToken, searchMethod);
                     case "remove_component":
@@ -203,29 +215,21 @@ namespace UnityMcpBridge.Editor.Tools
                 else if (!prefabPath.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
                 {
                     // If it looks like a path but doesn't end with .prefab, assume user forgot it and append it.
-                    // We could also error here, but appending might be more user-friendly.
                     Debug.LogWarning(
                         $"[ManageGameObject.Create] Provided prefabPath '{prefabPath}' does not end with .prefab. Assuming it's missing and appending."
                     );
                     prefabPath += ".prefab";
-                    // Note: This path might still not exist, AssetDatabase.LoadAssetAtPath will handle that.
                 }
-
-                // Removed the early return error for missing .prefab ending.
-                // The logic above now handles finding or assuming the .prefab extension.
 
                 GameObject prefabAsset = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
                 if (prefabAsset != null)
                 {
                     try
                     {
-                        // Instantiate the prefab, initially place it at the root
-                        // Parent will be set later if specified
                         newGo = PrefabUtility.InstantiatePrefab(prefabAsset) as GameObject;
 
                         if (newGo == null)
                         {
-                            // This might happen if the asset exists but isn't a valid GameObject prefab somehow
                             Debug.LogError(
                                 $"[ManageGameObject.Create] Failed to instantiate prefab at '{prefabPath}', asset might be corrupted or not a GameObject."
                             );
@@ -234,13 +238,11 @@ namespace UnityMcpBridge.Editor.Tools
                             );
                         }
 
-                        // Name the instance based on the 'name' parameter, not the prefab's default name
                         if (!string.IsNullOrEmpty(name))
                         {
                             newGo.name = name;
                         }
 
-                        // Register Undo for prefab instantiation
                         Undo.RegisterCreatedObjectUndo(
                             newGo,
                             $"Instantiate Prefab '{prefabAsset.name}' as '{newGo.name}'"
@@ -258,12 +260,9 @@ namespace UnityMcpBridge.Editor.Tools
                 }
                 else
                 {
-                    // Only return error if prefabPath was specified but not found.
-                    // If prefabPath was empty/null, we proceed to create primitive/empty.
                     Debug.LogWarning(
                         $"[ManageGameObject.Create] Prefab asset not found at path: '{prefabPath}'. Will proceed to create new object if specified."
                     );
-                    // Do not return error here, allow fallback to primitive/empty creation
                 }
             }
 
@@ -278,7 +277,6 @@ namespace UnityMcpBridge.Editor.Tools
                         PrimitiveType type = (PrimitiveType)
                             Enum.Parse(typeof(PrimitiveType), primitiveType, true);
                         newGo = GameObject.CreatePrimitive(type);
-                        // Set name *after* creation for primitives
                         if (!string.IsNullOrEmpty(name))
                             newGo.name = name;
                         else
@@ -312,22 +310,17 @@ namespace UnityMcpBridge.Editor.Tools
                     createdNewObject = true;
                 }
 
-                // Record creation for Undo *only* if we created a new object
                 if (createdNewObject)
                 {
                     Undo.RegisterCreatedObjectUndo(newGo, $"Create GameObject '{newGo.name}'");
                 }
             }
 
-            // --- Common Setup (Parent, Transform, Tag, Components) - Applied AFTER object exists ---
             if (newGo == null)
             {
-                // Should theoretically not happen if logic above is correct, but safety check.
                 return Response.Error("Failed to create or instantiate the GameObject.");
             }
 
-            // Record potential changes to the existing prefab instance or the new GO
-            // Record transform separately in case parent changes affect it
             Undo.RecordObject(newGo.transform, "Set GameObject Transform");
             Undo.RecordObject(newGo, "Set GameObject Properties");
 
@@ -359,7 +352,6 @@ namespace UnityMcpBridge.Editor.Tools
             // Set Tag (added for create action)
             if (!string.IsNullOrEmpty(tag))
             {
-                // Similar logic as in ModifyGameObject for setting/creating tags
                 string tagToSet = string.IsNullOrEmpty(tag) ? "Untagged" : tag;
                 try
                 {
@@ -456,16 +448,13 @@ namespace UnityMcpBridge.Editor.Tools
             if (createdNewObject && saveAsPrefab)
             {
                 string finalPrefabPath = prefabPath; // Use a separate variable for saving path
-                // This check should now happen *before* attempting to save
                 if (string.IsNullOrEmpty(finalPrefabPath))
                 {
-                    // Clean up the created object before returning error
                     UnityEngine.Object.DestroyImmediate(newGo);
                     return Response.Error(
                         "'prefabPath' is required when 'saveAsPrefab' is true and creating a new object."
                     );
                 }
-                // Ensure the *saving* path ends with .prefab
                 if (!finalPrefabPath.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
                 {
                     Debug.Log(
@@ -474,16 +463,8 @@ namespace UnityMcpBridge.Editor.Tools
                     finalPrefabPath += ".prefab";
                 }
 
-                // Removed the error check here as we now ensure the extension exists
-                // if (!prefabPath.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
-                // {
-                //     UnityEngine.Object.DestroyImmediate(newGo);
-                //     return Response.Error($"'prefabPath' must end with '.prefab'. Provided: '{prefabPath}'");
-                // }
-
                 try
                 {
-                    // Ensure directory exists using the final saving path
                     string directoryPath = System.IO.Path.GetDirectoryName(finalPrefabPath);
                     if (
                         !string.IsNullOrEmpty(directoryPath)
@@ -497,7 +478,6 @@ namespace UnityMcpBridge.Editor.Tools
                         );
                     }
 
-                    // Use SaveAsPrefabAssetAndConnect with the final saving path
                     finalInstance = PrefabUtility.SaveAsPrefabAssetAndConnect(
                         newGo,
                         finalPrefabPath,
@@ -506,7 +486,6 @@ namespace UnityMcpBridge.Editor.Tools
 
                     if (finalInstance == null)
                     {
-                        // Destroy the original if saving failed somehow (shouldn't usually happen if path is valid)
                         UnityEngine.Object.DestroyImmediate(newGo);
                         return Response.Error(
                             $"Failed to save GameObject '{name}' as prefab at '{finalPrefabPath}'. Check path and permissions."
@@ -515,21 +494,16 @@ namespace UnityMcpBridge.Editor.Tools
                     Debug.Log(
                         $"[ManageGameObject.Create] GameObject '{name}' saved as prefab to '{finalPrefabPath}' and instance connected."
                     );
-                    // Mark the new prefab asset as dirty? Not usually necessary, SaveAsPrefabAsset handles it.
-                    // EditorUtility.SetDirty(finalInstance); // Instance is handled by SaveAsPrefabAssetAndConnect
                 }
                 catch (Exception e)
                 {
-                    // Clean up the instance if prefab saving fails
                     UnityEngine.Object.DestroyImmediate(newGo); // Destroy the original attempt
                     return Response.Error($"Error saving prefab '{finalPrefabPath}': {e.Message}");
                 }
             }
 
-            // Select the instance in the scene (either prefab instance or newly created/saved one)
             Selection.activeGameObject = finalInstance;
 
-            // Determine appropriate success message using the potentially updated or original path
             string messagePrefabPath =
                 finalInstance == null
                     ? originalPrefabPath
@@ -554,8 +528,8 @@ namespace UnityMcpBridge.Editor.Tools
                     $"GameObject '{finalInstance.name}' created successfully in scene.";
             }
 
-            // Return data for the instance in the scene
-            return Response.Success(successMessage, GetGameObjectData(finalInstance));
+            // Use the new serializer helper
+            return Response.Success(successMessage, Helpers.GameObjectSerializer.GetGameObjectData(finalInstance));
         }
 
         private static object ModifyGameObject(
@@ -572,7 +546,6 @@ namespace UnityMcpBridge.Editor.Tools
                 );
             }
 
-            // Record state for Undo *before* modifications
             Undo.RecordObject(targetGo.transform, "Modify GameObject Transform");
             Undo.RecordObject(targetGo, "Modify GameObject Properties");
 
@@ -604,7 +577,6 @@ namespace UnityMcpBridge.Editor.Tools
                 {
                     return Response.Error($"New parent ('{parentToken}') not found.");
                 }
-                // Check for hierarchy loops
                 if (newParentGo != null && newParentGo.transform.IsChildOf(targetGo.transform))
                 {
                     return Response.Error(
@@ -628,22 +600,16 @@ namespace UnityMcpBridge.Editor.Tools
 
             // Change Tag (using consolidated 'tag' parameter)
             string tag = @params["tag"]?.ToString();
-            // Only attempt to change tag if a non-null tag is provided and it's different from the current one.
-            // Allow setting an empty string to remove the tag (Unity uses "Untagged").
             if (tag != null && targetGo.tag != tag)
             {
-                // Ensure the tag is not empty, if empty, it means "Untagged" implicitly
                 string tagToSet = string.IsNullOrEmpty(tag) ? "Untagged" : tag;
-
                 try
                 {
-                    // First attempt to set the tag
                     targetGo.tag = tagToSet;
                     modified = true;
                 }
                 catch (UnityException ex)
                 {
-                    // Check if the error is specifically because the tag doesn't exist
                     if (ex.Message.Contains("is not defined"))
                     {
                         Debug.LogWarning(
@@ -651,21 +617,15 @@ namespace UnityMcpBridge.Editor.Tools
                         );
                         try
                         {
-                            // Attempt to create the tag using internal utility
                             InternalEditorUtility.AddTag(tagToSet);
-                            // Wait a frame maybe? Not strictly necessary but sometimes helps editor updates.
-                            // yield return null; // Cannot yield here, editor script limitation
-
-                            // Retry setting the tag immediately after creation
                             targetGo.tag = tagToSet;
-                            modified = true; // Mark as modified on successful retry
+                            modified = true;
                             Debug.Log(
                                 $"[ManageGameObject] Tag '{tagToSet}' created and assigned successfully."
                             );
                         }
                         catch (Exception innerEx)
                         {
-                            // Handle failure during tag creation or the second assignment attempt
                             Debug.LogError(
                                 $"[ManageGameObject] Failed to create or assign tag '{tagToSet}' after attempting creation: {innerEx.Message}"
                             );
@@ -676,7 +636,6 @@ namespace UnityMcpBridge.Editor.Tools
                     }
                     else
                     {
-                        // If the exception was for a different reason, return the original error
                         return Response.Error($"Failed to set tag to '{tagToSet}': {ex.Message}.");
                     }
                 }
@@ -722,7 +681,6 @@ namespace UnityMcpBridge.Editor.Tools
             }
 
             // --- Component Modifications ---
-            // Note: These might need more specific Undo recording per component
 
             // Remove Components
             if (@params["componentsToRemove"] is JArray componentsToRemoveArray)
@@ -745,7 +703,6 @@ namespace UnityMcpBridge.Editor.Tools
             {
                 foreach (var compToken in componentsToAddArrayModify)
                 {
-                    // ... (parsing logic as in CreateGameObject) ...
                     string typeName = null;
                     JObject properties = null;
                     if (compToken.Type == JTokenType.String)
@@ -789,16 +746,18 @@ namespace UnityMcpBridge.Editor.Tools
 
             if (!modified)
             {
+                 // Use the new serializer helper
                 return Response.Success(
                     $"No modifications applied to GameObject '{targetGo.name}'.",
-                    GetGameObjectData(targetGo)
+                    Helpers.GameObjectSerializer.GetGameObjectData(targetGo)
                 );
             }
 
             EditorUtility.SetDirty(targetGo); // Mark scene as dirty
+             // Use the new serializer helper
             return Response.Success(
                 $"GameObject '{targetGo.name}' modified successfully.",
-                GetGameObjectData(targetGo)
+                Helpers.GameObjectSerializer.GetGameObjectData(targetGo)
             );
         }
 
@@ -861,11 +820,12 @@ namespace UnityMcpBridge.Editor.Tools
                 return Response.Success("No matching GameObjects found.", new List<object>());
             }
 
-            var results = foundObjects.Select(go => GetGameObjectData(go)).ToList();
+            // Use the new serializer helper
+            var results = foundObjects.Select(go => Helpers.GameObjectSerializer.GetGameObjectData(go)).ToList();
             return Response.Success($"Found {results.Count} GameObject(s).", results);
         }
 
-        private static object GetComponentsFromTarget(string target, string searchMethod)
+        private static object GetComponentsFromTarget(string target, string searchMethod, bool includeNonPublicSerialized)
         {
             GameObject targetGo = FindObjectInternal(target, searchMethod);
             if (targetGo == null)
@@ -877,11 +837,57 @@ namespace UnityMcpBridge.Editor.Tools
 
             try
             {
-                Component[] components = targetGo.GetComponents<Component>();
-                var componentData = components.Select(c => GetComponentData(c)).ToList();
+                // --- Get components, immediately copy to list, and null original array --- 
+                Component[] originalComponents = targetGo.GetComponents<Component>();
+                List<Component> componentsToIterate = new List<Component>(originalComponents ?? Array.Empty<Component>()); // Copy immediately, handle null case
+                int componentCount = componentsToIterate.Count; 
+                originalComponents = null; // Null the original reference
+                // Debug.Log($"[GetComponentsFromTarget] Found {componentCount} components on {targetGo.name}. Copied to list, nulled original. Starting REVERSE for loop...");
+                // --- End Copy and Null --- 
+                
+                var componentData = new List<object>();
+                
+                for (int i = componentCount - 1; i >= 0; i--) // Iterate backwards over the COPY
+                {
+                    Component c = componentsToIterate[i]; // Use the copy
+                    if (c == null) 
+                    {
+                        // Debug.LogWarning($"[GetComponentsFromTarget REVERSE for] Encountered a null component at index {i} on {targetGo.name}. Skipping.");
+                        continue; // Safety check
+                    }
+                    // Debug.Log($"[GetComponentsFromTarget REVERSE for] Processing component: {c.GetType()?.FullName ?? "null"} (ID: {c.GetInstanceID()}) at index {i} on {targetGo.name}");
+                    try 
+                    {
+                        var data = Helpers.GameObjectSerializer.GetComponentData(c, includeNonPublicSerialized);
+                        if (data != null) // Ensure GetComponentData didn't return null
+                        {
+                            componentData.Insert(0, data); // Insert at beginning to maintain original order in final list
+                        }
+                        // else
+                        // {
+                        //     Debug.LogWarning($"[GetComponentsFromTarget REVERSE for] GetComponentData returned null for component {c.GetType().FullName} (ID: {c.GetInstanceID()}) on {targetGo.name}. Skipping addition.");
+                        // }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogError($"[GetComponentsFromTarget REVERSE for] Error processing component {c.GetType().FullName} (ID: {c.GetInstanceID()}) on {targetGo.name}: {ex.Message}\n{ex.StackTrace}");
+                        // Optionally add placeholder data or just skip
+                        componentData.Insert(0, new JObject( // Insert error marker at beginning
+                            new JProperty("typeName", c.GetType().FullName + " (Serialization Error)"),
+                            new JProperty("instanceID", c.GetInstanceID()),
+                            new JProperty("error", ex.Message)
+                        ));
+                    }
+                }
+                // Debug.Log($"[GetComponentsFromTarget] Finished REVERSE for loop.");
+                
+                // Cleanup the list we created
+                componentsToIterate.Clear();
+                componentsToIterate = null;
+
                 return Response.Success(
                     $"Retrieved {componentData.Count} components from '{targetGo.name}'.",
-                    componentData
+                    componentData // List was built in original order
                 );
             }
             catch (Exception e)
@@ -942,9 +948,10 @@ namespace UnityMcpBridge.Editor.Tools
                 return addResult; // Return error
 
             EditorUtility.SetDirty(targetGo);
+            // Use the new serializer helper
             return Response.Success(
                 $"Component '{typeName}' added to '{targetGo.name}'.",
-                GetGameObjectData(targetGo)
+                Helpers.GameObjectSerializer.GetGameObjectData(targetGo)
             ); // Return updated GO data
         }
 
@@ -988,9 +995,10 @@ namespace UnityMcpBridge.Editor.Tools
                 return removeResult; // Return error
 
             EditorUtility.SetDirty(targetGo);
+             // Use the new serializer helper
             return Response.Success(
                 $"Component '{typeName}' removed from '{targetGo.name}'.",
-                GetGameObjectData(targetGo)
+                Helpers.GameObjectSerializer.GetGameObjectData(targetGo)
             );
         }
 
@@ -1036,9 +1044,10 @@ namespace UnityMcpBridge.Editor.Tools
                 return setResult; // Return error
 
             EditorUtility.SetDirty(targetGo);
+             // Use the new serializer helper
             return Response.Success(
                 $"Properties set for component '{compName}' on '{targetGo.name}'.",
-                GetGameObjectData(targetGo)
+                Helpers.GameObjectSerializer.GetGameObjectData(targetGo)
             );
         }
 
@@ -1315,11 +1324,6 @@ namespace UnityMcpBridge.Editor.Tools
                 }
             }
 
-            // Check if component already exists (optional, depending on desired behavior)
-            // if (targetGo.GetComponent(componentType) != null) {
-            //     return Response.Error($"Component '{typeName}' already exists on '{targetGo.name}'.");
-            // }
-
             try
             {
                 // Use Undo.AddComponent for undo support
@@ -1439,8 +1443,6 @@ namespace UnityMcpBridge.Editor.Tools
                         Debug.LogWarning(
                             $"[ManageGameObject] Could not set property '{propName}' on component '{compName}' ('{targetComponent.GetType().Name}'). Property might not exist, be read-only, or type mismatch."
                         );
-                        // Optionally return an error here instead of just logging
-                        // return Response.Error($"Could not set property '{propName}' on component '{compName}'.");
                     }
                 }
                 catch (Exception e)
@@ -1448,8 +1450,6 @@ namespace UnityMcpBridge.Editor.Tools
                     Debug.LogError(
                         $"[ManageGameObject] Error setting property '{propName}' on '{compName}': {e.Message}"
                     );
-                    // Optionally return an error here
-                    // return Response.Error($"Error setting property '{propName}' on '{compName}': {e.Message}");
                 }
             }
             EditorUtility.SetDirty(targetComponent);
@@ -1465,43 +1465,71 @@ namespace UnityMcpBridge.Editor.Tools
             BindingFlags flags =
                 BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase;
 
+             // --- Use a dedicated serializer for input conversion ---
+             // Define this somewhere accessible, maybe static readonly field
+             JsonSerializerSettings inputSerializerSettings = new JsonSerializerSettings
+             {
+                 Converters = new List<JsonConverter>
+                 {
+                    // Add specific converters needed for INPUT deserialization if different from output
+                    new Vector3Converter(),
+                    new Vector2Converter(),
+                    new QuaternionConverter(),
+                    new ColorConverter(),
+                    new RectConverter(),
+                    new BoundsConverter(),
+                    new UnityEngineObjectConverter() // Crucial for finding references from instructions
+                 }
+                 // No ReferenceLoopHandling needed typically for input
+             };
+             JsonSerializer inputSerializer = JsonSerializer.Create(inputSerializerSettings);
+             // --- End Serializer Setup ---
+
             try
             {
                 // Handle special case for materials with dot notation (material.property)
-                // Examples: material.color, sharedMaterial.color, materials[0].color
                 if (memberName.Contains('.') || memberName.Contains('['))
                 {
-                    return SetNestedProperty(target, memberName, value);
+                    // Pass the inputSerializer down for nested conversions
+                    return SetNestedProperty(target, memberName, value, inputSerializer);
                 }
 
                 PropertyInfo propInfo = type.GetProperty(memberName, flags);
                 if (propInfo != null && propInfo.CanWrite)
                 {
-                    object convertedValue = ConvertJTokenToType(value, propInfo.PropertyType);
-                    if (convertedValue != null)
+                    // Use the inputSerializer for conversion
+                    object convertedValue = ConvertJTokenToType(value, propInfo.PropertyType, inputSerializer);
+                    if (convertedValue != null || value.Type == JTokenType.Null) // Allow setting null
                     {
                         propInfo.SetValue(target, convertedValue);
                         return true;
+                    }
+                    else {
+                         Debug.LogWarning($"[SetProperty] Conversion failed for property '{memberName}' (Type: {propInfo.PropertyType.Name}) from token: {value.ToString(Formatting.None)}");
                     }
                 }
                 else
                 {
                     FieldInfo fieldInfo = type.GetField(memberName, flags);
-                    if (fieldInfo != null)
+                    if (fieldInfo != null) // Check if !IsLiteral?
                     {
-                        object convertedValue = ConvertJTokenToType(value, fieldInfo.FieldType);
-                        if (convertedValue != null)
+                         // Use the inputSerializer for conversion
+                        object convertedValue = ConvertJTokenToType(value, fieldInfo.FieldType, inputSerializer);
+                         if (convertedValue != null || value.Type == JTokenType.Null) // Allow setting null
                         {
                             fieldInfo.SetValue(target, convertedValue);
                             return true;
                         }
+                         else {
+                             Debug.LogWarning($"[SetProperty] Conversion failed for field '{memberName}' (Type: {fieldInfo.FieldType.Name}) from token: {value.ToString(Formatting.None)}");
+                         }
                     }
                 }
             }
             catch (Exception ex)
             {
                 Debug.LogError(
-                    $"[SetProperty] Failed to set '{memberName}' on {type.Name}: {ex.Message}"
+                    $"[SetProperty] Failed to set '{memberName}' on {type.Name}: {ex.Message}\nToken: {value.ToString(Formatting.None)}"
                 );
             }
             return false;
@@ -1510,7 +1538,8 @@ namespace UnityMcpBridge.Editor.Tools
         /// <summary>
         /// Sets a nested property using dot notation (e.g., "material.color") or array access (e.g., "materials[0]")
         /// </summary>
-        private static bool SetNestedProperty(object target, string path, JToken value)
+         // Pass the input serializer for conversions
+        private static bool SetNestedProperty(object target, string path, JToken value, JsonSerializer inputSerializer)
         {
             try
             {
@@ -1531,7 +1560,6 @@ namespace UnityMcpBridge.Editor.Tools
                     bool isArray = false;
                     int arrayIndex = -1;
 
-                    // Check if this part contains array indexing
                     if (part.Contains("["))
                     {
                         int startBracket = part.IndexOf('[');
@@ -1550,7 +1578,6 @@ namespace UnityMcpBridge.Editor.Tools
                         }
                     }
 
-                    // Get the property/field
                     PropertyInfo propInfo = currentType.GetProperty(part, flags);
                     FieldInfo fieldInfo = null;
                     if (propInfo == null)
@@ -1565,13 +1592,11 @@ namespace UnityMcpBridge.Editor.Tools
                         }
                     }
 
-                    // Get the value
                     currentObject =
                         propInfo != null
                             ? propInfo.GetValue(currentObject)
                             : fieldInfo.GetValue(currentObject);
 
-                    // If the current property is null, we need to stop
                     if (currentObject == null)
                     {
                         Debug.LogWarning(
@@ -1580,7 +1605,6 @@ namespace UnityMcpBridge.Editor.Tools
                         return false;
                     }
 
-                    // If this is an array/list access, get the element at the index
                     if (isArray)
                     {
                         if (currentObject is Material[])
@@ -1615,8 +1639,6 @@ namespace UnityMcpBridge.Editor.Tools
                             return false;
                         }
                     }
-
-                    // Update type for next iteration
                     currentType = currentObject.GetType();
                 }
 
@@ -1626,94 +1648,41 @@ namespace UnityMcpBridge.Editor.Tools
                 // Special handling for Material properties (shader properties)
                 if (currentObject is Material material && finalPart.StartsWith("_"))
                 {
-                    // Handle various material property types
+                    // Use the serializer to convert the JToken value first
                     if (value is JArray jArray)
                     {
-                        if (jArray.Count == 4) // Color with alpha
-                        {
-                            Color color = new Color(
-                                jArray[0].ToObject<float>(),
-                                jArray[1].ToObject<float>(),
-                                jArray[2].ToObject<float>(),
-                                jArray[3].ToObject<float>()
-                            );
-                            material.SetColor(finalPart, color);
-                            return true;
-                        }
-                        else if (jArray.Count == 3) // Color without alpha
-                        {
-                            Color color = new Color(
-                                jArray[0].ToObject<float>(),
-                                jArray[1].ToObject<float>(),
-                                jArray[2].ToObject<float>(),
-                                1.0f
-                            );
-                            material.SetColor(finalPart, color);
-                            return true;
-                        }
-                        else if (jArray.Count == 2) // Vector2
-                        {
-                            Vector2 vec = new Vector2(
-                                jArray[0].ToObject<float>(),
-                                jArray[1].ToObject<float>()
-                            );
-                            material.SetVector(finalPart, vec);
-                            return true;
-                        }
-                        else if (jArray.Count == 4) // Vector4
-                        {
-                            Vector4 vec = new Vector4(
-                                jArray[0].ToObject<float>(),
-                                jArray[1].ToObject<float>(),
-                                jArray[2].ToObject<float>(),
-                                jArray[3].ToObject<float>()
-                            );
-                            material.SetVector(finalPart, vec);
-                            return true;
+                        // Try converting to known types that SetColor/SetVector accept
+                        if (jArray.Count == 4) {
+                            try { Color color = value.ToObject<Color>(inputSerializer); material.SetColor(finalPart, color); return true; } catch {}
+                             try { Vector4 vec = value.ToObject<Vector4>(inputSerializer); material.SetVector(finalPart, vec); return true; } catch {}
+                        } else if (jArray.Count == 3) {
+                             try { Color color = value.ToObject<Color>(inputSerializer); material.SetColor(finalPart, color); return true; } catch {} // ToObject handles conversion to Color
+                        } else if (jArray.Count == 2) {
+                             try { Vector2 vec = value.ToObject<Vector2>(inputSerializer); material.SetVector(finalPart, vec); return true; } catch {}
                         }
                     }
                     else if (value.Type == JTokenType.Float || value.Type == JTokenType.Integer)
                     {
-                        material.SetFloat(finalPart, value.ToObject<float>());
-                        return true;
+                        try { material.SetFloat(finalPart, value.ToObject<float>(inputSerializer)); return true; } catch {}
                     }
                     else if (value.Type == JTokenType.Boolean)
                     {
-                        material.SetFloat(finalPart, value.ToObject<bool>() ? 1f : 0f);
-                        return true;
+                         try { material.SetFloat(finalPart, value.ToObject<bool>(inputSerializer) ? 1f : 0f); return true; } catch {}
                     }
                     else if (value.Type == JTokenType.String)
                     {
-                        // Might be a texture path
-                        string texturePath = value.ToString();
-                        if (
-                            texturePath.EndsWith(".png")
-                            || texturePath.EndsWith(".jpg")
-                            || texturePath.EndsWith(".tga")
-                        )
-                        {
-                            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(
-                                texturePath
-                            );
-                            if (texture != null)
-                            {
-                                material.SetTexture(finalPart, texture);
-                                return true;
-                            }
-                        }
-                        else
-                        {
-                            // Materials don't have SetString, use SetTextureOffset as workaround or skip
-                            // material.SetString(finalPart, texturePath);
-                            Debug.LogWarning(
-                                $"[SetNestedProperty] String values not directly supported for material property {finalPart}"
-                            );
-                            return false;
-                        }
+                        // Try converting to Texture using the serializer/converter
+                         try {
+                             Texture texture = value.ToObject<Texture>(inputSerializer);
+                             if (texture != null) {
+                                 material.SetTexture(finalPart, texture);
+                                 return true;
+                             }
+                         } catch {}
                     }
 
                     Debug.LogWarning(
-                        $"[SetNestedProperty] Unsupported material property value type: {value.Type} for {finalPart}"
+                        $"[SetNestedProperty] Unsupported or failed conversion for material property '{finalPart}' from value: {value.ToString(Formatting.None)}"
                     );
                     return false;
                 }
@@ -1722,11 +1691,15 @@ namespace UnityMcpBridge.Editor.Tools
                 PropertyInfo finalPropInfo = currentType.GetProperty(finalPart, flags);
                 if (finalPropInfo != null && finalPropInfo.CanWrite)
                 {
-                    object convertedValue = ConvertJTokenToType(value, finalPropInfo.PropertyType);
-                    if (convertedValue != null)
+                    // Use the inputSerializer for conversion
+                    object convertedValue = ConvertJTokenToType(value, finalPropInfo.PropertyType, inputSerializer);
+                    if (convertedValue != null || value.Type == JTokenType.Null)
                     {
                         finalPropInfo.SetValue(currentObject, convertedValue);
                         return true;
+                    }
+                     else {
+                        Debug.LogWarning($"[SetNestedProperty] Final conversion failed for property '{finalPart}' (Type: {finalPropInfo.PropertyType.Name}) from token: {value.ToString(Formatting.None)}");
                     }
                 }
                 else
@@ -1734,20 +1707,21 @@ namespace UnityMcpBridge.Editor.Tools
                     FieldInfo finalFieldInfo = currentType.GetField(finalPart, flags);
                     if (finalFieldInfo != null)
                     {
-                        object convertedValue = ConvertJTokenToType(
-                            value,
-                            finalFieldInfo.FieldType
-                        );
-                        if (convertedValue != null)
+                         // Use the inputSerializer for conversion
+                        object convertedValue = ConvertJTokenToType(value, finalFieldInfo.FieldType, inputSerializer);
+                        if (convertedValue != null || value.Type == JTokenType.Null)
                         {
                             finalFieldInfo.SetValue(currentObject, convertedValue);
                             return true;
                         }
+                         else {
+                             Debug.LogWarning($"[SetNestedProperty] Final conversion failed for field '{finalPart}' (Type: {finalFieldInfo.FieldType.Name}) from token: {value.ToString(Formatting.None)}");
+                         }
                     }
                     else
                     {
                         Debug.LogWarning(
-                            $"[SetNestedProperty] Could not find final property or field '{finalPart}' on type '{currentType.Name}'"
+                            $"[SetNestedProperty] Could not find final writable property or field '{finalPart}' on type '{currentType.Name}'"
                         );
                     }
                 }
@@ -1755,19 +1729,19 @@ namespace UnityMcpBridge.Editor.Tools
             catch (Exception ex)
             {
                 Debug.LogError(
-                    $"[SetNestedProperty] Error setting nested property '{path}': {ex.Message}"
+                    $"[SetNestedProperty] Error setting nested property '{path}': {ex.Message}\nToken: {value.ToString(Formatting.None)}"
                 );
             }
 
             return false;
         }
 
+
         /// <summary>
         /// Split a property path into parts, handling both dot notation and array indexers
         /// </summary>
         private static string[] SplitPropertyPath(string path)
         {
-            // Handle complex paths with both dots and array indexers
             List<string> parts = new List<string>();
             int startIndex = 0;
             bool inBrackets = false;
@@ -1786,254 +1760,260 @@ namespace UnityMcpBridge.Editor.Tools
                 }
                 else if (c == '.' && !inBrackets)
                 {
-                    // Found a dot separator outside of brackets
                     parts.Add(path.Substring(startIndex, i - startIndex));
                     startIndex = i + 1;
                 }
             }
-
-            // Add the final part
             if (startIndex < path.Length)
             {
                 parts.Add(path.Substring(startIndex));
             }
-
             return parts.ToArray();
         }
 
         /// <summary>
-        /// Simple JToken to Type conversion for common Unity types.
+        /// Simple JToken to Type conversion for common Unity types, using JsonSerializer.
         /// </summary>
-        private static object ConvertJTokenToType(JToken token, Type targetType)
+         // Pass the input serializer
+        private static object ConvertJTokenToType(JToken token, Type targetType, JsonSerializer inputSerializer)
         {
+            if (token == null || token.Type == JTokenType.Null)
+            {
+                if (targetType.IsValueType && Nullable.GetUnderlyingType(targetType) == null)
+                {
+                    Debug.LogWarning($"Cannot assign null to non-nullable value type {targetType.Name}. Returning default value.");
+                    return Activator.CreateInstance(targetType);
+                }
+                return null;
+            }
+
             try
             {
-                // Unwrap nested material properties if we're assigning to a Material
-                if (typeof(Material).IsAssignableFrom(targetType) && token is JObject materialProps)
-                {
-                    // Handle case where we're passing shader properties directly in a nested object
-                    string materialPath = token["path"]?.ToString();
-                    if (!string.IsNullOrEmpty(materialPath))
-                    {
-                        // Load the material by path
-                        Material material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
-                        if (material != null)
-                        {
-                            // If there are additional properties, set them
-                            foreach (var prop in materialProps.Properties())
-                            {
-                                if (prop.Name != "path")
-                                {
-                                    SetProperty(material, prop.Name, prop.Value);
-                                }
-                            }
-                            return material;
-                        }
-                        else
-                        {
-                            Debug.LogWarning(
-                                $"[ConvertJTokenToType] Could not load material at path: '{materialPath}'"
-                            );
-                            return null;
-                        }
-                    }
-
-                    // If no path is specified, could be a dynamic material or instance set by reference
-                    return null;
-                }
-
-                // Basic types first
-                if (targetType == typeof(string))
-                    return token.ToObject<string>();
-                if (targetType == typeof(int))
-                    return token.ToObject<int>();
-                if (targetType == typeof(float))
-                    return token.ToObject<float>();
-                if (targetType == typeof(bool))
-                    return token.ToObject<bool>();
-
-                // Vector/Quaternion/Color types
-                if (targetType == typeof(Vector2) && token is JArray arrV2 && arrV2.Count == 2)
-                    return new Vector2(arrV2[0].ToObject<float>(), arrV2[1].ToObject<float>());
-                if (targetType == typeof(Vector3) && token is JArray arrV3 && arrV3.Count == 3)
-                    return new Vector3(
-                        arrV3[0].ToObject<float>(),
-                        arrV3[1].ToObject<float>(),
-                        arrV3[2].ToObject<float>()
-                    );
-                if (targetType == typeof(Vector4) && token is JArray arrV4 && arrV4.Count == 4)
-                    return new Vector4(
-                        arrV4[0].ToObject<float>(),
-                        arrV4[1].ToObject<float>(),
-                        arrV4[2].ToObject<float>(),
-                        arrV4[3].ToObject<float>()
-                    );
-                if (targetType == typeof(Quaternion) && token is JArray arrQ && arrQ.Count == 4)
-                    return new Quaternion(
-                        arrQ[0].ToObject<float>(),
-                        arrQ[1].ToObject<float>(),
-                        arrQ[2].ToObject<float>(),
-                        arrQ[3].ToObject<float>()
-                    );
-                if (targetType == typeof(Color) && token is JArray arrC && arrC.Count >= 3) // Allow RGB or RGBA
-                    return new Color(
-                        arrC[0].ToObject<float>(),
-                        arrC[1].ToObject<float>(),
-                        arrC[2].ToObject<float>(),
-                        arrC.Count > 3 ? arrC[3].ToObject<float>() : 1.0f
-                    );
-
-                // Enum types
-                if (targetType.IsEnum)
-                    return Enum.Parse(targetType, token.ToString(), true); // Case-insensitive enum parsing
-
-                // Handle assigning Unity Objects (Assets, Scene Objects, Components)
-                if (typeof(UnityEngine.Object).IsAssignableFrom(targetType))
-                {
-                    // CASE 1: Reference is a JSON Object specifying a scene object/component find criteria
-                    if (token is JObject refObject)
-                    {
-                        JToken findToken = refObject["find"];
-                        string findMethod =
-                            refObject["method"]?.ToString() ?? "by_id_or_name_or_path"; // Default search
-                        string componentTypeName = refObject["component"]?.ToString();
-
-                        if (findToken == null)
-                        {
-                            Debug.LogWarning(
-                                $"[ConvertJTokenToType] Reference object missing 'find' property: {token}"
-                            );
-                            return null;
-                        }
-
-                        // Find the target GameObject
-                        // Pass 'searchInactive: true' for internal lookups to be more robust
-                        JObject findParams = new JObject();
-                        findParams["searchInactive"] = true;
-                        GameObject foundGo = FindObjectInternal(findToken, findMethod, findParams);
-
-                        if (foundGo == null)
-                        {
-                            Debug.LogWarning(
-                                $"[ConvertJTokenToType] Could not find GameObject specified by reference object: {token}"
-                            );
-                            return null;
-                        }
-
-                        // If a component type is specified, try to get it
-                        if (!string.IsNullOrEmpty(componentTypeName))
-                        {
-                            Type compType = FindType(componentTypeName);
-                            if (compType == null)
-                            {
-                                Debug.LogWarning(
-                                    $"[ConvertJTokenToType] Could not find component type '{componentTypeName}' specified in reference object: {token}"
-                                );
-                                return null;
-                            }
-
-                            // Ensure the targetType is assignable from the found component type
-                            if (!targetType.IsAssignableFrom(compType))
-                            {
-                                Debug.LogWarning(
-                                    $"[ConvertJTokenToType] Found component '{componentTypeName}' but it is not assignable to the target property type '{targetType.Name}'. Reference: {token}"
-                                );
-                                return null;
-                            }
-
-                            Component foundComp = foundGo.GetComponent(compType);
-                            if (foundComp == null)
-                            {
-                                Debug.LogWarning(
-                                    $"[ConvertJTokenToType] Found GameObject '{foundGo.name}' but could not find component '{componentTypeName}' on it. Reference: {token}"
-                                );
-                                return null;
-                            }
-                            return foundComp; // Return the found component
-                        }
-                        else
-                        {
-                            // Otherwise, return the GameObject itself, ensuring it's assignable
-                            if (!targetType.IsAssignableFrom(typeof(GameObject)))
-                            {
-                                Debug.LogWarning(
-                                    $"[ConvertJTokenToType] Found GameObject '{foundGo.name}' but it is not assignable to the target property type '{targetType.Name}' (component name was not specified). Reference: {token}"
-                                );
-                                return null;
-                            }
-                            return foundGo; // Return the found GameObject
-                        }
-                    }
-                    // CASE 2: Reference is a string, assume it's an asset path
-                    else if (token.Type == JTokenType.String)
-                    {
-                        string assetPath = token.ToString();
-                        if (!string.IsNullOrEmpty(assetPath))
-                        {
-                            // Attempt to load the asset from the provided path using the target type
-                            UnityEngine.Object loadedAsset = AssetDatabase.LoadAssetAtPath(
-                                assetPath,
-                                targetType
-                            );
-                            if (loadedAsset != null)
-                            {
-                                return loadedAsset; // Return the loaded asset if successful
-                            }
-                            else
-                            {
-                                // Log a warning if the asset could not be found at the path
-                                Debug.LogWarning(
-                                    $"[ConvertJTokenToType] Could not load asset of type '{targetType.Name}' from path: '{assetPath}'. Make sure the path is correct and the asset exists."
-                                );
-                                return null;
-                            }
-                        }
-                        else
-                        {
-                            // Handle cases where an empty string might be intended to clear the reference
-                            return null; // Assign null if the path is empty
-                        }
-                    }
-                    // CASE 3: Reference is null or empty JToken, assign null
-                    else if (
-                        token.Type == JTokenType.Null
-                        || string.IsNullOrEmpty(token.ToString())
-                    )
-                    {
-                        return null;
-                    }
-                    // CASE 4: Invalid format for Unity Object reference
-                    else
-                    {
-                        Debug.LogWarning(
-                            $"[ConvertJTokenToType] Expected a string asset path or a reference object to assign Unity Object of type '{targetType.Name}', but received token type '{token.Type}'. Value: {token}"
-                        );
-                        return null;
-                    }
-                }
-
-                // Fallback: Try direct conversion (might work for other simple value types)
-                // Be cautious here, this might throw errors for complex types not handled above
-                try
-                {
-                    return token.ToObject(targetType);
-                }
-                catch (Exception directConversionEx)
-                {
-                    Debug.LogWarning(
-                        $"[ConvertJTokenToType] Direct conversion failed for JToken '{token}' to type '{targetType.Name}': {directConversionEx.Message}. Specific handling might be needed."
-                    );
-                    return null;
-                }
+                // Use the provided serializer instance which includes our custom converters
+                return token.ToObject(targetType, inputSerializer);
+            }
+            catch (JsonSerializationException jsonEx)
+            {
+                 Debug.LogError($"JSON Deserialization Error converting token to {targetType.FullName}: {jsonEx.Message}\nToken: {token.ToString(Formatting.None)}");
+                 // Optionally re-throw or return null/default
+                 // return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
+                 throw; // Re-throw to indicate failure higher up
+            }
+            catch (ArgumentException argEx)
+            {
+                Debug.LogError($"Argument Error converting token to {targetType.FullName}: {argEx.Message}\nToken: {token.ToString(Formatting.None)}");
+                 throw;
             }
             catch (Exception ex)
             {
-                Debug.LogWarning(
-                    $"[ConvertJTokenToType] Could not convert JToken '{token}' to type '{targetType.Name}': {ex.Message}"
-                );
-                return null;
+                 Debug.LogError($"Unexpected error converting token to {targetType.FullName}: {ex}\nToken: {token.ToString(Formatting.None)}");
+                 throw;
             }
+            // If ToObject succeeded, it would have returned. If it threw, we wouldn't reach here.
+             // This fallback logic is likely unreachable if ToObject covers all cases or throws on failure.
+             // Debug.LogWarning($"Conversion failed for token to {targetType.FullName}. Token: {token.ToString(Formatting.None)}");
+             // return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
         }
+
+        // --- ParseJTokenTo... helpers are likely redundant now with the serializer approach ---
+        // Keep them temporarily for reference or if specific fallback logic is ever needed.
+
+        private static Vector3 ParseJTokenToVector3(JToken token)
+        {
+            // ... (implementation - likely replaced by Vector3Converter) ...
+            // Consider removing these if the serializer handles them reliably.
+            if (token is JObject obj && obj.ContainsKey("x") && obj.ContainsKey("y") && obj.ContainsKey("z"))
+            {
+                return new Vector3(obj["x"].ToObject<float>(), obj["y"].ToObject<float>(), obj["z"].ToObject<float>());
+            }
+            if (token is JArray arr && arr.Count >= 3)
+            {
+                 return new Vector3(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>());
+            }
+            Debug.LogWarning($"Could not parse JToken '{token}' as Vector3 using fallback. Returning Vector3.zero.");
+            return Vector3.zero;
+
+        }
+        private static Vector2 ParseJTokenToVector2(JToken token)
+        {
+            // ... (implementation - likely replaced by Vector2Converter) ...
+             if (token is JObject obj && obj.ContainsKey("x") && obj.ContainsKey("y"))
+            {
+                return new Vector2(obj["x"].ToObject<float>(), obj["y"].ToObject<float>());
+            }
+            if (token is JArray arr && arr.Count >= 2)
+            {
+                 return new Vector2(arr[0].ToObject<float>(), arr[1].ToObject<float>());
+            }
+            Debug.LogWarning($"Could not parse JToken '{token}' as Vector2 using fallback. Returning Vector2.zero.");
+            return Vector2.zero;
+        }
+        private static Quaternion ParseJTokenToQuaternion(JToken token)
+        {
+            // ... (implementation - likely replaced by QuaternionConverter) ...
+            if (token is JObject obj && obj.ContainsKey("x") && obj.ContainsKey("y") && obj.ContainsKey("z") && obj.ContainsKey("w"))
+            {
+                return new Quaternion(obj["x"].ToObject<float>(), obj["y"].ToObject<float>(), obj["z"].ToObject<float>(), obj["w"].ToObject<float>());
+            }
+            if (token is JArray arr && arr.Count >= 4)
+            {
+                 return new Quaternion(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>(), arr[3].ToObject<float>());
+            }
+            Debug.LogWarning($"Could not parse JToken '{token}' as Quaternion using fallback. Returning Quaternion.identity.");
+            return Quaternion.identity;
+        }
+        private static Color ParseJTokenToColor(JToken token)
+        {
+             // ... (implementation - likely replaced by ColorConverter) ...
+            if (token is JObject obj && obj.ContainsKey("r") && obj.ContainsKey("g") && obj.ContainsKey("b") && obj.ContainsKey("a"))
+            {
+                return new Color(obj["r"].ToObject<float>(), obj["g"].ToObject<float>(), obj["b"].ToObject<float>(), obj["a"].ToObject<float>());
+            }
+            if (token is JArray arr && arr.Count >= 4)
+            {
+                 return new Color(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>(), arr[3].ToObject<float>());
+            }
+            Debug.LogWarning($"Could not parse JToken '{token}' as Color using fallback. Returning Color.white.");
+            return Color.white;
+        }
+        private static Rect ParseJTokenToRect(JToken token)
+        {
+             // ... (implementation - likely replaced by RectConverter) ...
+            if (token is JObject obj && obj.ContainsKey("x") && obj.ContainsKey("y") && obj.ContainsKey("width") && obj.ContainsKey("height"))
+            {
+                return new Rect(obj["x"].ToObject<float>(), obj["y"].ToObject<float>(), obj["width"].ToObject<float>(), obj["height"].ToObject<float>());
+            }
+            if (token is JArray arr && arr.Count >= 4)
+            {
+                 return new Rect(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>(), arr[3].ToObject<float>());
+            }
+            Debug.LogWarning($"Could not parse JToken '{token}' as Rect using fallback. Returning Rect.zero.");
+            return Rect.zero;
+        }
+        private static Bounds ParseJTokenToBounds(JToken token)
+        {
+             // ... (implementation - likely replaced by BoundsConverter) ...
+            if (token is JObject obj && obj.ContainsKey("center") && obj.ContainsKey("size"))
+            {
+                // Requires Vector3 conversion, which should ideally use the serializer too
+                 Vector3 center = ParseJTokenToVector3(obj["center"]); // Or use obj["center"].ToObject<Vector3>(inputSerializer)
+                 Vector3 size = ParseJTokenToVector3(obj["size"]);     // Or use obj["size"].ToObject<Vector3>(inputSerializer)
+                return new Bounds(center, size);
+            }
+            // Array fallback for Bounds is less intuitive, maybe remove?
+            // if (token is JArray arr && arr.Count >= 6)
+            // {
+            //      return new Bounds(new Vector3(arr[0].ToObject<float>(), arr[1].ToObject<float>(), arr[2].ToObject<float>()), new Vector3(arr[3].ToObject<float>(), arr[4].ToObject<float>(), arr[5].ToObject<float>()));
+            // }
+            Debug.LogWarning($"Could not parse JToken '{token}' as Bounds using fallback. Returning new Bounds(Vector3.zero, Vector3.zero).");
+            return new Bounds(Vector3.zero, Vector3.zero);
+        }
+        // --- End Redundant Parse Helpers ---
+
+         /// <summary>
+         /// Finds a specific UnityEngine.Object based on a find instruction JObject.
+         /// Primarily used by UnityEngineObjectConverter during deserialization.
+         /// </summary>
+         // Made public static so UnityEngineObjectConverter can call it. Moved from ConvertJTokenToType.
+         public static UnityEngine.Object FindObjectByInstruction(JObject instruction, Type targetType)
+         {
+             string findTerm = instruction["find"]?.ToString();
+             string method = instruction["method"]?.ToString()?.ToLower();
+             string componentName = instruction["component"]?.ToString(); // Specific component to get
+
+             if (string.IsNullOrEmpty(findTerm))
+             {
+                 Debug.LogWarning("Find instruction missing 'find' term.");
+                 return null;
+             }
+
+             // Use a flexible default search method if none provided
+             string searchMethodToUse = string.IsNullOrEmpty(method) ? "by_id_or_name_or_path" : method;
+
+             // If the target is an asset (Material, Texture, ScriptableObject etc.) try AssetDatabase first
+             if (typeof(Material).IsAssignableFrom(targetType) ||
+                 typeof(Texture).IsAssignableFrom(targetType) ||
+                 typeof(ScriptableObject).IsAssignableFrom(targetType) ||
+                 targetType.FullName.StartsWith("UnityEngine.U2D") || // Sprites etc.
+                 typeof(AudioClip).IsAssignableFrom(targetType) ||
+                 typeof(AnimationClip).IsAssignableFrom(targetType) ||
+                 typeof(Font).IsAssignableFrom(targetType) ||
+                 typeof(Shader).IsAssignableFrom(targetType) ||
+                 typeof(ComputeShader).IsAssignableFrom(targetType) ||
+                 typeof(GameObject).IsAssignableFrom(targetType) && findTerm.StartsWith("Assets/")) // Prefab check
+             {
+                // Try loading directly by path/GUID first
+                UnityEngine.Object asset = AssetDatabase.LoadAssetAtPath(findTerm, targetType);
+                 if (asset != null) return asset;
+                 asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(findTerm); // Try generic if type specific failed
+                 if (asset != null && targetType.IsAssignableFrom(asset.GetType())) return asset;
+
+
+                 // If direct path failed, try finding by name/type using FindAssets
+                 string searchFilter = $"t:{targetType.Name} {System.IO.Path.GetFileNameWithoutExtension(findTerm)}"; // Search by type and name
+                 string[] guids = AssetDatabase.FindAssets(searchFilter);
+
+                 if (guids.Length == 1)
+                 {
+                     asset = AssetDatabase.LoadAssetAtPath(AssetDatabase.GUIDToAssetPath(guids[0]), targetType);
+                     if (asset != null) return asset;
+                 }
+                 else if (guids.Length > 1)
+                 {
+                     Debug.LogWarning($"[FindObjectByInstruction] Ambiguous asset find: Found {guids.Length} assets matching filter '{searchFilter}'. Provide a full path or unique name.");
+                     // Optionally return the first one? Or null? Returning null is safer.
+                     return null;
+                 }
+                 // If still not found, fall through to scene search (though unlikely for assets)
+             }
+
+
+             // --- Scene Object Search ---
+             // Find the GameObject using the internal finder
+             GameObject foundGo = FindObjectInternal(new JValue(findTerm), searchMethodToUse);
+
+             if (foundGo == null)
+             {
+                 // Don't warn yet, could still be an asset not found above
+                 // Debug.LogWarning($"Could not find GameObject using instruction: {instruction}");
+                 return null;
+             }
+
+             // Now, get the target object/component from the found GameObject
+             if (targetType == typeof(GameObject))
+             {
+                 return foundGo; // We were looking for a GameObject
+             }
+             else if (typeof(Component).IsAssignableFrom(targetType))
+             {
+                 Type componentToGetType = targetType;
+                 if (!string.IsNullOrEmpty(componentName))
+                 {
+                     Type specificCompType = FindType(componentName);
+                     if (specificCompType != null && typeof(Component).IsAssignableFrom(specificCompType))
+                     {
+                         componentToGetType = specificCompType;
+                     }
+                     else
+                     {
+                         Debug.LogWarning($"Could not find component type '{componentName}' specified in find instruction. Falling back to target type '{targetType.Name}'.");
+                     }
+                 }
+
+                 Component foundComp = foundGo.GetComponent(componentToGetType);
+                 if (foundComp == null)
+                 {
+                     Debug.LogWarning($"Found GameObject '{foundGo.name}' but could not find component of type '{componentToGetType.Name}'.");
+                 }
+                 return foundComp;
+             }
+             else
+             {
+                  Debug.LogWarning($"Find instruction handling not implemented for target type: {targetType.Name}");
+                  return null;
+             }
+         }
+
 
         /// <summary>
         /// Helper to find a Type by name, searching relevant assemblies.
@@ -2043,37 +2023,50 @@ namespace UnityMcpBridge.Editor.Tools
             if (string.IsNullOrEmpty(typeName))
                 return null;
 
-            // Handle common Unity namespaces implicitly
-            var type =
-                Type.GetType($"UnityEngine.{typeName}, UnityEngine.CoreModule")
-                ?? Type.GetType($"UnityEngine.{typeName}, UnityEngine.PhysicsModule")
-                ?? // Example physics
-                Type.GetType($"UnityEngine.UI.{typeName}, UnityEngine.UI")
-                ?? // Example UI
-                Type.GetType($"UnityEditor.{typeName}, UnityEditor.CoreModule")
-                ?? Type.GetType(typeName); // Try direct name (if fully qualified or in mscorlib)
+             // Handle fully qualified names first
+            Type type = Type.GetType(typeName);
+            if (type != null) return type;
 
-            if (type != null)
-                return type;
+             // Handle common namespaces implicitly (add more as needed)
+             string[] namespaces = { "UnityEngine", "UnityEngine.UI", "UnityEngine.AI", "UnityEngine.Animations", "UnityEngine.Audio", "UnityEngine.EventSystems", "UnityEngine.InputSystem", "UnityEngine.Networking", "UnityEngine.Rendering", "UnityEngine.SceneManagement", "UnityEngine.Tilemaps", "UnityEngine.U2D", "UnityEngine.Video", "UnityEditor", "UnityEditor.AI", "UnityEditor.Animations", "UnityEditor.Experimental.GraphView", "UnityEditor.IMGUI.Controls", "UnityEditor.PackageManager.UI", "UnityEditor.SceneManagement", "UnityEditor.UI", "UnityEditor.U2D", "UnityEditor.VersionControl" }; // Add more relevant namespaces
 
-            // If not found, search all loaded assemblies (slower)
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+             foreach (string ns in namespaces) {
+                 type = Type.GetType($"{ns}.{typeName}, {ns.Split('.')[0]}.CoreModule") ?? // Heuristic: Check CoreModule first for UnityEngine/UnityEditor
+                        Type.GetType($"{ns}.{typeName}, {ns.Split('.')[0]}"); // Try assembly matching namespace root
+                 if (type != null) return type;
+             }
+
+
+             // If not found, search all loaded assemblies (slower, last resort)
+             // Prioritize assemblies likely to contain game/editor types
+             Assembly[] priorityAssemblies = {
+                 Assembly.Load("Assembly-CSharp"), // Main game scripts
+                 Assembly.Load("Assembly-CSharp-Editor"), // Main editor scripts
+                 // Add other important project assemblies if known
+             };
+             foreach (var assembly in priorityAssemblies.Where(a => a != null))
+             {
+                 type = assembly.GetType(typeName) ?? assembly.GetType("UnityEngine." + typeName) ?? assembly.GetType("UnityEditor." + typeName);
+                 if (type != null) return type;
+             }
+
+             // Search remaining assemblies
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies().Except(priorityAssemblies))
             {
-                type = assembly.GetType(typeName);
-                if (type != null)
-                    return type;
-                // Also check with namespaces if simple name given
-                type = assembly.GetType("UnityEngine." + typeName);
-                if (type != null)
-                    return type;
-                type = assembly.GetType("UnityEditor." + typeName);
-                if (type != null)
-                    return type;
-                type = assembly.GetType("UnityEngine.UI." + typeName);
-                if (type != null)
-                    return type;
+                 try { // Protect against assembly loading errors
+                     type = assembly.GetType(typeName);
+                     if (type != null) return type;
+                     // Also check with common namespaces if simple name given
+                     foreach (string ns in namespaces) {
+                         type = assembly.GetType($"{ns}.{typeName}");
+                         if (type != null) return type;
+                     }
+                 } catch (Exception ex) {
+                      Debug.LogWarning($"[FindType] Error searching assembly {assembly.FullName}: {ex.Message}");
+                 }
             }
 
+             Debug.LogWarning($"[FindType] Type not found after extensive search: '{typeName}'");
             return null; // Not found
         }
 
@@ -2086,135 +2079,23 @@ namespace UnityMcpBridge.Editor.Tools
             {
                 try
                 {
+                    // Use ToObject for potentially better handling than direct indexing
                     return new Vector3(
                         array[0].ToObject<float>(),
                         array[1].ToObject<float>(),
                         array[2].ToObject<float>()
                     );
                 }
-                catch
-                { /* Ignore parsing errors */
+                catch (Exception ex)
+                {
+                     Debug.LogWarning($"Failed to parse JArray as Vector3: {array}. Error: {ex.Message}");
                 }
             }
             return null;
         }
 
-        // --- Data Serialization ---
-
-        /// <summary>
-        /// Creates a serializable representation of a GameObject.
-        /// </summary>
-        private static object GetGameObjectData(GameObject go)
-        {
-            if (go == null)
-                return null;
-            return new
-            {
-                name = go.name,
-                instanceID = go.GetInstanceID(),
-                tag = go.tag,
-                layer = go.layer,
-                activeSelf = go.activeSelf,
-                activeInHierarchy = go.activeInHierarchy,
-                isStatic = go.isStatic,
-                scenePath = go.scene.path, // Identify which scene it belongs to
-                transform = new // Serialize transform components carefully to avoid JSON issues
-                {
-                    // Serialize Vector3 components individually to prevent self-referencing loops.
-                    // The default serializer can struggle with properties like Vector3.normalized.
-                    position = new
-                    {
-                        x = go.transform.position.x,
-                        y = go.transform.position.y,
-                        z = go.transform.position.z,
-                    },
-                    localPosition = new
-                    {
-                        x = go.transform.localPosition.x,
-                        y = go.transform.localPosition.y,
-                        z = go.transform.localPosition.z,
-                    },
-                    rotation = new
-                    {
-                        x = go.transform.rotation.eulerAngles.x,
-                        y = go.transform.rotation.eulerAngles.y,
-                        z = go.transform.rotation.eulerAngles.z,
-                    },
-                    localRotation = new
-                    {
-                        x = go.transform.localRotation.eulerAngles.x,
-                        y = go.transform.localRotation.eulerAngles.y,
-                        z = go.transform.localRotation.eulerAngles.z,
-                    },
-                    scale = new
-                    {
-                        x = go.transform.localScale.x,
-                        y = go.transform.localScale.y,
-                        z = go.transform.localScale.z,
-                    },
-                    forward = new
-                    {
-                        x = go.transform.forward.x,
-                        y = go.transform.forward.y,
-                        z = go.transform.forward.z,
-                    },
-                    up = new
-                    {
-                        x = go.transform.up.x,
-                        y = go.transform.up.y,
-                        z = go.transform.up.z,
-                    },
-                    right = new
-                    {
-                        x = go.transform.right.x,
-                        y = go.transform.right.y,
-                        z = go.transform.right.z,
-                    },
-                },
-                parentInstanceID = go.transform.parent?.gameObject.GetInstanceID() ?? 0, // 0 if no parent
-                // Optionally include components, but can be large
-                // components = go.GetComponents<Component>().Select(c => GetComponentData(c)).ToList()
-                // Or just component names:
-                componentNames = go.GetComponents<Component>()
-                    .Select(c => c.GetType().FullName)
-                    .ToList(),
-            };
-        }
-
-        /// <summary>
-        /// Creates a serializable representation of a Component.
-        /// TODO: Add property serialization.
-        /// </summary>
-        private static object GetComponentData(Component c)
-        {
-            if (c == null)
-                return null;
-            var data = new Dictionary<string, object>
-            {
-                { "typeName", c.GetType().FullName },
-                { "instanceID", c.GetInstanceID() },
-            };
-
-            // Attempt to serialize public properties/fields (can be noisy/complex)
-            /*
-            try {
-                var properties = new Dictionary<string, object>();
-                var type = c.GetType();
-                BindingFlags flags = BindingFlags.Public | BindingFlags.Instance;
-                
-                foreach (var prop in type.GetProperties(flags).Where(p => p.CanRead && p.GetIndexParameters().Length == 0)) {
-                    try { properties[prop.Name] = prop.GetValue(c); } catch { }
-                }
-                foreach (var field in type.GetFields(flags)) {
-                     try { properties[field.Name] = field.GetValue(c); } catch { }
-                }
-                data["properties"] = properties;
-            } catch (Exception ex) {
-                data["propertiesError"] = ex.Message;
-            }
-            */
-            return data;
-        }
+        // Removed GetGameObjectData, GetComponentData, and related private helpers/caching/serializer setup.
+        // They are now in Helpers.GameObjectSerializer
     }
 }
 

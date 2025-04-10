@@ -35,6 +35,7 @@ def register_manage_gameobject_tools(mcp: FastMCP):
         search_inactive: bool = False,
         # -- Component Management Arguments --
         component_name: str = None,
+        includeNonPublicSerialized: bool = None, # Controls serialization of private [SerializeField] fields
     ) -> Dict[str, Any]:
         """Manages GameObjects: create, modify, delete, find, and component operations.
 
@@ -59,6 +60,7 @@ def register_manage_gameobject_tools(mcp: FastMCP):
             Action-specific arguments (e.g., position, rotation, scale for create/modify;
                      component_name for component actions;
                      search_term, find_all for 'find').
+            includeNonPublicSerialized: If True, includes private fields marked [SerializeField] in component data.
 
         Returns:
             Dictionary with operation results ('success', 'message', 'data').
@@ -91,7 +93,8 @@ def register_manage_gameobject_tools(mcp: FastMCP):
                 "findAll": find_all,
                 "searchInChildren": search_in_children,
                 "searchInactive": search_inactive,
-                "componentName": component_name
+                "componentName": component_name,
+                "includeNonPublicSerialized": includeNonPublicSerialized
             }
             params = {k: v for k, v in params.items() if v is not None}
             
