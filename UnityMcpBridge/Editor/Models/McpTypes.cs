@@ -4,6 +4,6 @@ namespace UnityMcpBridge.Editor.Models
     {
         ClaudeDesktop,
         Cursor,
+        Windsurf,
     }
 }
-
