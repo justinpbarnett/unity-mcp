@@ -39,8 +39,12 @@ namespace UnityMcpBridge.Editor.Helpers
                     if (IsNewerVersion(latestVersion, installedVersion))
                     {
                         UpdateServer(saveLocation);
+                        Debug.Log($"Unity MCP Server updated from version {installedVersion} to {latestVersion}");
                     }
-                    else { }
+                    else 
+                    {
+                        Debug.Log($"Unity MCP Server is up to date (version {installedVersion})");
+                    }
                 }
             }
             catch (Exception ex)
@@ -108,10 +112,39 @@ namespace UnityMcpBridge.Editor.Helpers
         /// <summary>
         /// Checks if the server is installed at the specified location.
         /// </summary>
+        /// <param name="location">The base directory where the server should be installed</param>
+        /// <returns>True if the server is properly installed, false otherwise</returns>
         private static bool IsServerInstalled(string location)
         {
-            return Directory.Exists(location)
-                && File.Exists(Path.Combine(location, ServerFolder, "src", "pyproject.toml"));
+            try
+            {
+                if (!Directory.Exists(location))
+                {
+                    return false;
+                }
+                
+                string pyprojectPath = Path.Combine(location, ServerFolder, "src", "pyproject.toml");
+                string serverPyPath = Path.Combine(location, ServerFolder, "src", "server.py");
+                
+                // Check both files to ensure a complete installation
+                bool hasRequiredFiles = File.Exists(pyprojectPath) && File.Exists(serverPyPath);
+                
+                // Additional check: Verify git directory exists for updates
+                bool hasGitDir = Directory.Exists(Path.Combine(location, ".git"));
+                
+                if (!hasRequiredFiles && hasGitDir)
+                {
+                    // If git exists but files are missing, we have a broken installation
+                    Debug.LogWarning($"Found partial installation at {location}. Some required files are missing.");
+                }
+                
+                return hasRequiredFiles;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error checking server installation: {ex.Message}");
+                return false;
+            }
         }
 
         /// <summary>
@@ -119,25 +152,51 @@ namespace UnityMcpBridge.Editor.Helpers
         /// </summary>
         private static void InstallServer(string location)
         {
-            // Create the src directory where the server code will reside
-            Directory.CreateDirectory(location);
+            Debug.Log($"Installing Unity MCP Server to {location}");
+            
+            try
+            {
+                // Create the src directory where the server code will reside
+                Directory.CreateDirectory(location);
 
-            // Initialize git repo in the src directory
-            RunCommand("git", $"init", workingDirectory: location);
+                // Initialize git repo in the src directory
+                RunCommand("git", $"init", workingDirectory: location);
 
-            // Add remote
-            RunCommand("git", $"remote add origin {GitUrl}", workingDirectory: location);
+                // Add remote
+                RunCommand("git", $"remote add origin {GitUrl}", workingDirectory: location);
 
-            // Configure sparse checkout
-            RunCommand("git", "config core.sparseCheckout true", workingDirectory: location);
+                // Configure sparse checkout
+                RunCommand("git", "config core.sparseCheckout true", workingDirectory: location);
 
-            // Set sparse checkout path to only include UnityMcpServer folder
-            string sparseCheckoutPath = Path.Combine(location, ".git", "info", "sparse-checkout");
-            File.WriteAllText(sparseCheckoutPath, $"{ServerFolder}/");
+                // Set sparse checkout path to only include UnityMcpServer folder
+                string sparseCheckoutPath = Path.Combine(location, ".git", "info", "sparse-checkout");
+                File.WriteAllText(sparseCheckoutPath, $"{ServerFolder}/");
 
-            // Fetch and checkout the branch
-            RunCommand("git", $"fetch --depth=1 origin {BranchName}", workingDirectory: location);
-            RunCommand("git", $"checkout {BranchName}", workingDirectory: location);
+                // Fetch and checkout the branch
+                RunCommand("git", $"fetch --depth=1 origin {BranchName}", workingDirectory: location);
+                RunCommand("git", $"checkout {BranchName}", workingDirectory: location);
+                
+                Debug.Log("Unity MCP Server installation completed successfully");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to install Unity MCP Server: {ex.Message}");
+                
+                // Clean up failed installation to prevent partial installs
+                try
+                {
+                    if (Directory.Exists(location))
+                    {
+                        Directory.Delete(location, true);
+                    }
+                }
+                catch (Exception cleanupEx)
+                {
+                    Debug.LogError($"Failed to clean up after installation error: {cleanupEx.Message}");
+                }
+                
+                throw; // Rethrow to be caught by EnsureServerInstalled
+            }
         }
 
         /// <summary>
@@ -145,13 +204,28 @@ namespace UnityMcpBridge.Editor.Helpers
         /// </summary>
         public static string GetInstalledVersion()
         {
-            string pyprojectPath = Path.Combine(
-                GetSaveLocation(),
-                ServerFolder,
-                "src",
-                "pyproject.toml"
-            );
-            return ParseVersionFromPyproject(File.ReadAllText(pyprojectPath));
+            try
+            {
+                string pyprojectPath = Path.Combine(
+                    GetSaveLocation(),
+                    ServerFolder,
+                    "src",
+                    "pyproject.toml"
+                );
+                
+                if (!File.Exists(pyprojectPath))
+                {
+                    Debug.LogWarning($"pyproject.toml not found at {pyprojectPath}");
+                    return "0.0.0"; // Return a baseline version if file doesn't exist
+                }
+                
+                return ParseVersionFromPyproject(File.ReadAllText(pyprojectPath));
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error getting installed version: {ex.Message}");
+                return "0.0.0"; // Return a baseline version on error
+            }
         }
 
         /// <summary>
@@ -159,9 +233,22 @@ namespace UnityMcpBridge.Editor.Helpers
         /// </summary>
         public static string GetLatestVersion()
         {
-            using WebClient webClient = new();
-            string pyprojectContent = webClient.DownloadString(PyprojectUrl);
-            return ParseVersionFromPyproject(pyprojectContent);
+            try
+            {
+                using WebClient webClient = new();
+                string pyprojectContent = webClient.DownloadString(PyprojectUrl);
+                return ParseVersionFromPyproject(pyprojectContent);
+            }
+            catch (WebException webEx)
+            {
+                Debug.LogError($"Failed to download latest version: {webEx.Message}. Check your internet connection.");
+                return GetInstalledVersion(); // Fall back to installed version
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error getting latest version: {ex.Message}");
+                return GetInstalledVersion(); // Fall back to installed version
+            }
         }
 
         /// <summary>
@@ -169,26 +256,65 @@ namespace UnityMcpBridge.Editor.Helpers
         /// </summary>
         private static void UpdateServer(string location)
         {
-            RunCommand("git", $"pull origin {BranchName}", workingDirectory: location);
+            Debug.Log("Updating Unity MCP Server...");
+            
+            try
+            {
+                RunCommand("git", $"pull origin {BranchName}", workingDirectory: location);
+                Debug.Log("Unity MCP Server update completed successfully");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to update Unity MCP Server: {ex.Message}");
+                throw; // Rethrow to be caught by EnsureServerInstalled
+            }
         }
 
         /// <summary>
         /// Parses the version number from pyproject.toml content.
         /// </summary>
+        /// <param name="content">The content of pyproject.toml file</param>
+        /// <returns>Version string or "0.0.0" if not found</returns>
         private static string ParseVersionFromPyproject(string content)
         {
-            foreach (string line in content.Split('\n'))
+            try
             {
-                if (line.Trim().StartsWith("version ="))
+                if (string.IsNullOrEmpty(content))
                 {
-                    string[] parts = line.Split('=');
-                    if (parts.Length == 2)
+                    Debug.LogWarning("Empty pyproject.toml content");
+                    return "0.0.0";
+                }
+                
+                foreach (string line in content.Split('\n'))
+                {
+                    if (line.Trim().StartsWith("version ="))
                     {
-                        return parts[1].Trim().Trim('"');
+                        string[] parts = line.Split('=');
+                        if (parts.Length == 2)
+                        {
+                            string version = parts[1].Trim().Trim('"', '\'');
+                            
+                            // Validate version format (should be like x.y.z)
+                            if (System.Text.RegularExpressions.Regex.IsMatch(version, @"^\d+\.\d+\.\d+$"))
+                            {
+                                return version;
+                            }
+                            else
+                            {
+                                Debug.LogWarning($"Invalid version format in pyproject.toml: {version}");
+                            }
+                        }
                     }
                 }
+                
+                Debug.LogWarning("Version not found in pyproject.toml");
+                return "0.0.0";
             }
-            throw new Exception("Version not found in pyproject.toml");
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error parsing pyproject.toml: {ex.Message}");
+                return "0.0.0";
+            }
         }
 
         /// <summary>
