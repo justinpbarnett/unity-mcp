@@ -26,8 +26,32 @@ namespace UnityMcpBridge.Editor
             (string commandJson, TaskCompletionSource<string> tcs)
         > commandQueue = new();
         private static readonly int unityPort = 6400; // Hardcoded port
+        private static bool listenOnAllInterfaces = false; // Default to loopback only
+        private const string ListenModePrefsKey = "UnityMcpBridge_ListenOnAllInterfaces";
 
         public static bool IsRunning => isRunning;
+        public static bool ListenOnAllInterfaces 
+        { 
+            get => listenOnAllInterfaces; 
+            set 
+            {
+                if (listenOnAllInterfaces != value && isRunning)
+                {
+                    // Restart the bridge with the new setting
+                    listenOnAllInterfaces = value;
+                    // Save the setting
+                    EditorPrefs.SetBool(ListenModePrefsKey, value);
+                    Stop();
+                    Start();
+                }
+                else
+                {
+                    listenOnAllInterfaces = value;
+                    // Save the setting
+                    EditorPrefs.SetBool(ListenModePrefsKey, value);
+                }
+            }
+        }
 
         public static bool FolderExists(string path)
         {
@@ -50,6 +74,9 @@ namespace UnityMcpBridge.Editor
 
         static UnityMcpBridge()
         {
+            // Load saved setting
+            listenOnAllInterfaces = EditorPrefs.GetBool(ListenModePrefsKey, false);
+            
             Start();
             EditorApplication.quitting += Stop;
         }
@@ -74,10 +101,12 @@ namespace UnityMcpBridge.Editor
 
             try
             {
-                listener = new TcpListener(IPAddress.Loopback, unityPort);
+                // Use the appropriate IP address based on user preference
+                IPAddress ipAddress = listenOnAllInterfaces ? IPAddress.Any : IPAddress.Loopback;
+                listener = new TcpListener(ipAddress, unityPort);
                 listener.Start();
                 isRunning = true;
-                Debug.Log($"UnityMcpBridge started on port {unityPort}.");
+                Debug.Log($"UnityMcpBridge started on {(listenOnAllInterfaces ? "all interfaces" : "loopback only")} port {unityPort}.");
                 // Assuming ListenerLoop and ProcessCommands are defined elsewhere
                 Task.Run(ListenerLoop);
                 EditorApplication.update += ProcessCommands;
@@ -431,6 +460,40 @@ namespace UnityMcpBridge.Editor
             {
                 return "Could not summarize parameters";
             }
+        }
+
+        // Method to get available IP addresses for user information
+        public static List<string> GetAvailableIPAddresses()
+        {
+            List<string> ipAddresses = new();
+            try
+            {
+                // Get host name
+                string hostName = Dns.GetHostName();
+                
+                // Get IP addresses for this machine
+                IPHostEntry ipEntry = Dns.GetHostEntry(hostName);
+                foreach (IPAddress addr in ipEntry.AddressList)
+                {
+                    // Only include IPv4 addresses for simplicity
+                    if (addr.AddressFamily == AddressFamily.InterNetwork)
+                    {
+                        ipAddresses.Add(addr.ToString());
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error getting IP addresses: {ex.Message}");
+            }
+            
+            // Add loopback if not already in the list
+            if (!ipAddresses.Contains("127.0.0.1"))
+            {
+                ipAddresses.Insert(0, "127.0.0.1");
+            }
+            
+            return ipAddresses;
         }
     }
 }

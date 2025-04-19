@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using Newtonsoft.Json;
@@ -31,6 +32,9 @@ namespace UnityMcpBridge.Editor.Windows
             UpdatePythonServerInstallationStatus();
 
             isUnityBridgeRunning = UnityMcpBridge.IsRunning;
+            // Update UI to reflect current binding mode
+            Repaint();
+            
             foreach (McpClient mcpClient in mcpClients.clients)
             {
                 CheckMcpConfiguration(mcpClient);
@@ -244,6 +248,61 @@ namespace UnityMcpBridge.Editor.Windows
             EditorGUILayout.LabelField("Unity MCP Bridge", EditorStyles.boldLabel);
             EditorGUILayout.LabelField($"Status: {(isUnityBridgeRunning ? "Running" : "Stopped")}");
             EditorGUILayout.LabelField($"Port: {unityPort}");
+            
+            // Display the bound address
+            string boundAddress = UnityMcpBridge.ListenOnAllInterfaces ? "0.0.0.0 (All Interfaces)" : "127.0.0.1 (Loopback Only)";
+            EditorGUILayout.LabelField($"Binding: {boundAddress}");
+            
+            // Network interface toggle
+            bool currentListenMode = UnityMcpBridge.ListenOnAllInterfaces;
+            bool newListenMode = EditorGUILayout.Toggle(
+                new GUIContent(
+                    "Listen on All Interfaces",
+                    "When enabled, listens on all network interfaces (0.0.0.0). When disabled, listens only on loopback (127.0.0.1)."
+                ),
+                currentListenMode
+            );
+            
+            // Update the binding mode if changed
+            if (newListenMode != currentListenMode)
+            {
+                UnityMcpBridge.ListenOnAllInterfaces = newListenMode;
+                // If the bridge is running, it will automatically restart with the new setting
+            }
+
+            // Warning when listening on all interfaces
+            if (newListenMode)
+            {
+                EditorGUILayout.HelpBox(
+                    "Warning: Listening on all network interfaces makes the Unity Bridge accessible from other devices on your network. " +
+                    "Only use this option in trusted network environments.",
+                    MessageType.Warning
+                );
+                
+                // Show available IP addresses for connecting
+                EditorGUILayout.Space(5);
+                EditorGUILayout.LabelField("Available IP Addresses:", EditorStyles.boldLabel);
+                
+                List<string> ipAddresses = UnityMcpBridge.GetAvailableIPAddresses();
+                if (ipAddresses.Count > 0)
+                {
+                    EditorGUI.indentLevel++;
+                    foreach (string ip in ipAddresses)
+                    {
+                        EditorGUILayout.LabelField($"• {ip}:{unityPort}");
+                    }
+                    EditorGUI.indentLevel--;
+                }
+                else
+                {
+                    EditorGUILayout.LabelField("No IP addresses found.");
+                }
+                
+                EditorGUILayout.HelpBox(
+                    "Other devices can connect to any of these addresses while the bridge is running.",
+                    MessageType.Info
+                );
+            }
 
             if (GUILayout.Button(isUnityBridgeRunning ? "Stop Bridge" : "Start Bridge"))
             {

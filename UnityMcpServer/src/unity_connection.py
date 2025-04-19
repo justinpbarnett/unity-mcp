@@ -29,6 +29,7 @@ class UnityConnection:
             logger.info(f"Connected to Unity at {self.host}:{self.port}")
             return True
         except Exception as e:
+            logger.error(f"Failed to connect to on {self.host}:{self.port}")
             logger.error(f"Failed to connect to Unity: {str(e)}")
             self.sock = None
             return False
@@ -181,7 +182,7 @@ def get_unity_connection() -> UnityConnection:
     
     # Create a new connection
     logger.info("Creating new Unity connection")
-    _unity_connection = UnityConnection()
+    _unity_connection = UnityConnection(host=config.unity_host, port=config.unity_port)
     if not _unity_connection.connect():
         _unity_connection = None
         raise ConnectionError("Could not connect to Unity. Ensure the Unity Editor and MCP Bridge are running.")
