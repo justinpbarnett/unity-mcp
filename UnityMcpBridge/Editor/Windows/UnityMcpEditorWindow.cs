@@ -7,6 +7,7 @@ using UnityEngine;
 using UnityMcpBridge.Editor.Data;
 using UnityMcpBridge.Editor.Helpers;
 using UnityMcpBridge.Editor.Models;
+using UnityMcpBridge.Editor.Tools;
 
 namespace UnityMcpBridge.Editor.Windows
 {
@@ -19,6 +20,8 @@ namespace UnityMcpBridge.Editor.Windows
         private const int unityPort = 6400; // Hardcoded Unity port
         private const int mcpPort = 6500; // Hardcoded MCP port
         private readonly McpClients mcpClients = new();
+
+        private bool mpcClientConfigFolder;
 
         [MenuItem("Window/Unity MCP")]
         public static void ShowWindow()
@@ -251,10 +254,30 @@ namespace UnityMcpBridge.Editor.Windows
             }
             EditorGUILayout.EndVertical();
 
-            foreach (McpClient mcpClient in mcpClients.clients)
+            EditorGUILayout.Space(10);
+
+            // Registered commands list section
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("Registered commands", EditorStyles.boldLabel);
+            int counter = 1;
+            foreach (var command in CommandRegistry.GetRegisteredCommands())
             {
-                EditorGUILayout.Space(10);
-                ConfigurationSection(mcpClient);
+                EditorGUILayout.LabelField($"[{counter++}] {command}");
+            }
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.Space(10);
+
+            // MCP client configuration sections
+            mpcClientConfigFolder = EditorGUILayout.Foldout(mpcClientConfigFolder, "MCP Client Configuration");
+
+            if (mpcClientConfigFolder)
+            {
+                foreach (McpClient mcpClient in mcpClients.clients)
+                {
+                    EditorGUILayout.Space(10);
+                    ConfigurationSection(mcpClient);
+                }
             }
 
             EditorGUILayout.EndScrollView();

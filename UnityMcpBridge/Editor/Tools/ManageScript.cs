@@ -12,8 +12,14 @@ namespace UnityMcpBridge.Editor.Tools
     /// <summary>
     /// Handles CRUD operations for C# scripts within the Unity project.
     /// </summary>
+    [InitializeOnLoad]
     public static class ManageScript
     {
+        static ManageScript()
+        {
+            CommandRegistry.RegisterCommand("manage_script", HandleCommand);
+        }
+
         /// <summary>
         /// Main handler for script management actions.
         /// </summary>

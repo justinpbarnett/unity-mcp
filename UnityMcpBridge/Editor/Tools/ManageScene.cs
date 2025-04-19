@@ -14,8 +14,15 @@ namespace UnityMcpBridge.Editor.Tools
     /// <summary>
     /// Handles scene management operations like loading, saving, creating, and querying hierarchy.
     /// </summary>
+    [InitializeOnLoad]
+
     public static class ManageScene
     {
+        static ManageScene()
+        {
+            CommandRegistry.RegisterCommand("manage_scene", HandleCommand);
+        }
+
         /// <summary>
         /// Main handler for scene management actions.
         /// </summary>

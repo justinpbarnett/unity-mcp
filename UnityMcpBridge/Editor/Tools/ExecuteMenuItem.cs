@@ -10,8 +10,14 @@ namespace UnityMcpBridge.Editor.Tools
     /// <summary>
     /// Handles executing Unity Editor menu items by path.
     /// </summary>
+    [InitializeOnLoad]
     public static class ExecuteMenuItem
     {
+        static ExecuteMenuItem()
+        {
+            CommandRegistry.RegisterCommand("execute_menu_item", HandleCommand);
+        }
+
         // Basic blacklist to prevent accidental execution of potentially disruptive menu items.
         // This can be expanded based on needs.
         private static readonly HashSet<string> _menuPathBlacklist = new HashSet<string>(

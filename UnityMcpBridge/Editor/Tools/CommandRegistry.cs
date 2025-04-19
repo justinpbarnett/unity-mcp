@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
+using UnityEngine;
 
 namespace UnityMcpBridge.Editor.Tools
 {
@@ -11,16 +12,55 @@ namespace UnityMcpBridge.Editor.Tools
     {
         // Maps command names (matching those called from Python via ctx.bridge.unity_editor.HandlerName)
         // to the corresponding static HandleCommand method in the appropriate tool class.
-        private static readonly Dictionary<string, Func<JObject, object>> _handlers = new()
+        private static readonly Dictionary<string, Func<JObject, object>> _handlers = new();
+
+
+        /// <summary>  
+        /// Registers a command handler with a specified name.  
+        /// </summary>  
+        /// <param name="name">The name of the command to register.</param>  
+        /// <param name="commandHandler">The function to handle the command.</param>  
+        public static void RegisterCommand(string name, Func<JObject, object> commandHandler)
         {
-            { "HandleManageScript", ManageScript.HandleCommand },
-            { "HandleManageScene", ManageScene.HandleCommand },
-            { "HandleManageEditor", ManageEditor.HandleCommand },
-            { "HandleManageGameObject", ManageGameObject.HandleCommand },
-            { "HandleManageAsset", ManageAsset.HandleCommand },
-            { "HandleReadConsole", ReadConsole.HandleCommand },
-            { "HandleExecuteMenuItem", ExecuteMenuItem.HandleCommand },
-        };
+            // Use case-insensitive comparison for flexibility, although Python side should be consistent
+            if (!_handlers.ContainsKey(name))
+            {
+                _handlers.Add(name.ToLower(), commandHandler);
+
+                Debug.Log($"Command '{name}' registered.");
+            }
+        }
+
+
+        /// <summary>  
+        /// Executes a registered command by name with the provided parameters.  
+        /// </summary>  
+        /// <param name="name">The name of the command to execute.</param>  
+        /// <param name="paramsObject">The parameters to pass to the command handler.</param>  
+        /// <returns>The result of the command execution or an error message if the command is not found.</returns>  
+        public static object ExecuteCommand(string name, JObject paramsObject)
+        {
+            if (_handlers.TryGetValue(name.ToLower(), out var command))
+            {
+                return command(paramsObject);
+            }
+            else
+            {
+                Debug.Log($"Command '{name}' not found.");
+                return $"Command '{name}' not found.";
+            }
+        }
+
+
+        /// <summary>  
+        /// Retrieves a list of all registered command names.  
+        /// </summary>  
+        /// <returns>A list of registered command names.</returns>  
+        public static List<string> GetRegisteredCommands()
+        {
+            // Return a list of registered command names
+            return new List<string>(_handlers.Keys);
+        }
 
         /// <summary>
         /// Gets a command handler by name.
