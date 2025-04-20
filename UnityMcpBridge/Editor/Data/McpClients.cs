@@ -43,6 +43,24 @@ namespace UnityMcpBridge.Editor.Data
                 mcpType = McpTypes.Cursor,
                 configStatus = "Not Configured",
             },
+            new()
+            {
+                name = "Windsurf",
+                windowsConfigPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    ".codeium",
+                    "windsurf",
+                    "mcp_config.json"
+                ),
+                linuxConfigPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    ".codeium",
+                    "windsurf",
+                    "mcp_config.json"
+                ),
+                mcpType = McpTypes.Cursor,
+                configStatus = "Not Configured",
+            }
         };
 
         // Initialize status enums after construction
