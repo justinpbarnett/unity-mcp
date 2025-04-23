@@ -66,13 +66,13 @@ namespace UnityMcpBridge.Editor.Tools
         /// </summary>
         private static object ExecuteItem(JObject @params)
         {
-            string menuPath = @params["menu_path"]?.ToString();
+            string menuPath = @params["menuPath"]?.ToString();
             // string alias = @params["alias"]?.ToString(); // TODO: Implement alias mapping based on refactor plan requirements.
             // JObject parameters = @params["parameters"] as JObject; // TODO: Investigate parameter passing (often not directly supported by ExecuteMenuItem).
 
             if (string.IsNullOrWhiteSpace(menuPath))
             {
-                return Response.Error("Required parameter 'menu_path' is missing or empty.");
+                return Response.Error("Required parameter 'menuPath' is missing or empty.");
             }
 
             // Validate against blacklist
