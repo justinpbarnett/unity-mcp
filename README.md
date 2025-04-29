@@ -1,5 +1,7 @@
 # Unity MCP ✨
 
+[![smithery badge](https://smithery.ai/badge/@justinpbarnett/unity-mcp)](https://smithery.ai/server/@justinpbarnett/unity-mcp)
+
 **Connect your Unity Editor to LLMs using the Model Context Protocol.**
 
 Unity MCP acts as a bridge, allowing AI assistants (like Claude, Cursor) to interact directly with your Unity Editor via a local **MCP (Model Context Protocol) Client**. Give your LLM tools to manage assets, control scenes, edit scripts, and automate tasks within Unity.
@@ -45,6 +47,14 @@ Unity MCP connects your tools using two components:
 ## Installation ⚙️
 
 > **Note:** The setup is constantly improving as we update the package. Check back if you randomly start to run into issues.
+
+### Installing via Smithery
+
+To install Unity MCP for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@justinpbarnett/unity-mcp):
+
+```bash
+npx -y @smithery/cli install @justinpbarnett/unity-mcp --client claude
+```
 
 ### Prerequisites
 
