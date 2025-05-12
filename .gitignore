@@ -31,3 +31,4 @@ CONTRIBUTING.md.meta
 .idea/
 .vscode/
 .aider*
+.DS_Store*

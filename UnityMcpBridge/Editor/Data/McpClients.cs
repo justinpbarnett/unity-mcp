@@ -43,6 +43,26 @@ namespace UnityMcpBridge.Editor.Data
                 mcpType = McpTypes.Cursor,
                 configStatus = "Not Configured",
             },
+            new()
+            {
+                name = "VSCode GitHub Copilot",
+                windowsConfigPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "Code",
+                    "User",
+                    "settings.json"
+                ),
+                linuxConfigPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    "Library",
+                    "Application Support",
+                    "Code",
+                    "User",
+                    "settings.json"
+                ),
+                mcpType = McpTypes.VSCode,
+                configStatus = "Not Configured",
+            },
         };
 
         // Initialize status enums after construction
