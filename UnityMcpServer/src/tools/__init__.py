@@ -5,6 +5,7 @@ from .manage_gameobject import register_manage_gameobject_tools
 from .manage_asset import register_manage_asset_tools
 from .read_console import register_read_console_tools
 from .execute_menu_item import register_execute_menu_item_tools
+from .dynamic_tools import register_dynamic_tools
 
 def register_all_tools(mcp):
     """Register all refactored tools with the MCP server."""
@@ -16,4 +17,5 @@ def register_all_tools(mcp):
     register_manage_asset_tools(mcp)
     register_read_console_tools(mcp)
     register_execute_menu_item_tools(mcp)
+    register_dynamic_tools(mcp)
     print("Unity MCP Server tool registration complete.")
