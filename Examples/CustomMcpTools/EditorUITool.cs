@@ -9,17 +9,15 @@ using UnityMcpBridge.Editor.Helpers;
 namespace Examples.CustomMcpTools
 {
     /// <summary>
-    /// 自定义MCP工具示例：编辑器UI交互工具
     /// Custom MCP Tool Example: Editor UI Interaction Tool
     /// 
-    /// 展示如何创建与Unity编辑器界面交互的自定义MCP工具
     /// Demonstrates how to create custom MCP tools that interact with Unity Editor UI
     /// </summary>
     public class EditorUITool : IUnityMcpTool
     {
         public string CommandType => "editor_ui";
         
-        public string Description => "与Unity编辑器UI交互，包括窗口操作、布局管理、选择操作等 / Interact with Unity Editor UI including window operations, layout management, selection operations etc.";
+        public string Description => "Interact with Unity Editor UI including window operations, layout management, selection operations etc.";
         
         public object HandleCommand(JObject parameters)
         {
@@ -28,7 +26,7 @@ namespace Examples.CustomMcpTools
                 string action = parameters["action"]?.ToString()?.ToLower();
                 if (string.IsNullOrEmpty(action))
                 {
-                    return Response.Error("必须指定action参数");
+                    return Response.Error("action parameter is required");
                 }
 
                 return action switch
@@ -41,12 +39,12 @@ namespace Examples.CustomMcpTools
                     "maximize_window" => MaximizeWindow(parameters),
                     "show_notification" => ShowNotification(parameters),
                     "create_popup" => CreatePopup(parameters),
-                    _ => Response.Error($"未知的action: {action}。支持的action: get_windows, focus_window, get_selection, select_objects, get_layout, maximize_window, show_notification, create_popup")
+                    _ => Response.Error($"Unknown action: {action}. Supported actions: get_windows, focus_window, get_selection, select_objects, get_layout, maximize_window, show_notification, create_popup")
                 };
             }
             catch (Exception ex)
             {
-                return Response.Error($"执行编辑器UI操作时发生错误: {ex.Message}");
+                return Response.Error($"Error executing editor UI operation: {ex.Message}");
             }
         }
 
@@ -84,7 +82,7 @@ namespace Examples.CustomMcpTools
 
             if (string.IsNullOrEmpty(windowType) && string.IsNullOrEmpty(windowTitle))
             {
-                return Response.Error("必须指定windowType或windowTitle参数");
+                return Response.Error("windowType or windowTitle parameter is required");
             }
 
             var windows = Resources.FindObjectsOfTypeAll<EditorWindow>();
@@ -101,13 +99,13 @@ namespace Examples.CustomMcpTools
 
             if (targetWindow == null)
             {
-                return Response.Error($"未找到指定的窗口: {windowType ?? windowTitle}");
+                return Response.Error($"Window not found: {windowType ?? windowTitle}");
             }
 
             targetWindow.Focus();
             return Response.Success(new
             {
-                message = $"已聚焦到窗口: {targetWindow.titleContent.text}",
+                message = $"Focused to window: {targetWindow.titleContent.text}",
                 windowType = targetWindow.GetType().Name
             });
         }
@@ -144,7 +142,7 @@ namespace Examples.CustomMcpTools
 
             if (objectNames == null && objectPaths == null)
             {
-                return Response.Error("必须指定objectNames或objectPaths参数");
+                return Response.Error("objectNames or objectPaths parameter is required");
             }
 
             var objectsToSelect = new System.Collections.Generic.List<UnityEngine.Object>();
@@ -175,14 +173,14 @@ namespace Examples.CustomMcpTools
 
             if (objectsToSelect.Count == 0)
             {
-                return Response.Error("未找到任何指定的对象");
+                return Response.Error("No specified objects found");
             }
 
             Selection.objects = objectsToSelect.ToArray();
 
             return Response.Success(new
             {
-                message = $"已选中 {objectsToSelect.Count} 个对象",
+                message = $"Selected {objectsToSelect.Count} objects",
                 selectedObjects = objectsToSelect.Select(obj => obj.name).ToArray()
             });
         }
@@ -205,18 +203,18 @@ namespace Examples.CustomMcpTools
 
             if (string.IsNullOrEmpty(windowType))
             {
-                // 如果没指定窗口，就操作当前聚焦的窗口
+                // If no window specified, operate on the currently focused window
                 if (EditorWindow.focusedWindow != null)
                 {
                     EditorWindow.focusedWindow.maximized = maximize;
                     return Response.Success(new
                     {
-                        message = $"已{(maximize ? "最大化" : "还原")}当前窗口: {EditorWindow.focusedWindow.titleContent.text}"
+                        message = $"{(maximize ? "Maximized" : "Restored")} current window: {EditorWindow.focusedWindow.titleContent.text}"
                     });
                 }
                 else
                 {
-                    return Response.Error("没有聚焦的窗口可以操作");
+                    return Response.Error("No focused window to operate on");
                 }
             }
 
@@ -225,13 +223,13 @@ namespace Examples.CustomMcpTools
 
             if (window == null)
             {
-                return Response.Error($"未找到类型为 {windowType} 的窗口");
+                return Response.Error($"Window of type {windowType} not found");
             }
 
             window.maximized = maximize;
             return Response.Success(new
             {
-                message = $"已{(maximize ? "最大化" : "还原")}窗口: {window.titleContent.text}"
+                message = $"{(maximize ? "Maximized" : "Restored")} window: {window.titleContent.text}"
             });
         }
 
@@ -242,7 +240,7 @@ namespace Examples.CustomMcpTools
 
             if (string.IsNullOrEmpty(message))
             {
-                return Response.Error("必须指定message参数");
+                return Response.Error("message parameter is required");
             }
 
             var window = EditorWindow.focusedWindow ?? EditorWindow.GetWindow<SceneView>();
@@ -250,7 +248,7 @@ namespace Examples.CustomMcpTools
 
             return Response.Success(new
             {
-                message = "通知已显示",
+                message = "Notification shown",
                 content = message,
                 duration = duration
             });
@@ -258,14 +256,14 @@ namespace Examples.CustomMcpTools
 
         private object CreatePopup(JObject parameters)
         {
-            string title = parameters["title"]?.ToString() ?? "消息";
+            string title = parameters["title"]?.ToString() ?? "Message";
             string message = parameters["message"]?.ToString();
-            string ok = parameters["ok"]?.ToString() ?? "确定";
+            string ok = parameters["ok"]?.ToString() ?? "OK";
             string cancel = parameters["cancel"]?.ToString();
 
             if (string.IsNullOrEmpty(message))
             {
-                return Response.Error("必须指定message参数");
+                return Response.Error("message parameter is required");
             }
 
             bool result;

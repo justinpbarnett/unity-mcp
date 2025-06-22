@@ -10,17 +10,15 @@ using UnityMcpBridge.Editor.Helpers;
 namespace Examples.CustomMcpTools
 {
     /// <summary>
-    /// 自定义MCP工具示例：项目信息工具
     /// Custom MCP Tool Example: Project Information Tool
     /// 
-    /// 用户只需创建这样一个类，Unity MCP Bridge会自动发现并注册它
     /// Users only need to create a class like this, and Unity MCP Bridge will automatically discover and register it
     /// </summary>
     public class ProjectInfoTool : IUnityMcpTool
     {
         public string CommandType => "project_info";
         
-        public string Description => "获取Unity项目的详细信息，包括版本、设置、资源统计等 / Get detailed Unity project information including version, settings, asset statistics etc.";
+        public string Description => "Get detailed Unity project information including version, settings, asset statistics etc.";
         
         public object HandleCommand(JObject parameters)
         {
@@ -35,12 +33,12 @@ namespace Examples.CustomMcpTools
                     "settings" => GetProjectSettings(),
                     "scenes" => GetSceneInfo(),
                     "packages" => GetPackageInfo(),
-                    _ => Response.Error($"未知的action: {action}。支持的action: summary, assets, settings, scenes, packages")
+                    _ => Response.Error($"Unknown action: {action}. Supported actions: summary, assets, settings, scenes, packages")
                 };
             }
             catch (Exception ex)
             {
-                return Response.Error($"执行项目信息查询时发生错误: {ex.Message}");
+                return Response.Error($"Error executing project information query: {ex.Message}");
             }
         }
 
@@ -131,7 +129,7 @@ namespace Examples.CustomMcpTools
             var request = UnityEditor.PackageManager.Client.List();
             while (!request.IsCompleted)
             {
-                // 简单等待，在实际项目中可能需要异步处理
+                // Simple wait, might need async handling in real projects
                 System.Threading.Thread.Sleep(10);
             }
 
@@ -156,7 +154,7 @@ namespace Examples.CustomMcpTools
             }
             else
             {
-                return Response.Error($"获取包信息失败: {request.Error?.message}");
+                return Response.Error($"Failed to get package information: {request.Error?.message}");
             }
         }
     }
