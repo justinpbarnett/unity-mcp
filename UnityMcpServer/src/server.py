@@ -44,7 +44,7 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
         logger.info("Unity MCP Server shut down")
 
 def create_mcp_server() -> FastMCP:
-    """Create and configure the MCP server with dynamic tool discovery."""
+    """Create and configure the MCP server."""
     global _unity_connection, _discovered_tools
     
     # Initialize MCP server
@@ -54,71 +54,22 @@ def create_mcp_server() -> FastMCP:
         lifespan=server_lifespan
     )
     
-    # Register static tools first
+    # Register all tools (static + dynamic interface)
     register_all_tools(mcp)
     
-    # Try to connect to Unity and discover tools early if possible
+    # Try to connect to Unity early for tool discovery metadata
     try:
         temp_connection = get_unity_connection()
         if temp_connection:
             logger.info("Early Unity connection successful, discovering tools...")
             
-            # Discover Unity tools
+            # Discover Unity tools for metadata only (don't register duplicates)
             response = temp_connection.send_command("list_tools", {})
             if response.get("success") and response.get("data"):
                 tools_data = response["data"]
                 if isinstance(tools_data, dict) and "tools" in tools_data:
                     _discovered_tools = tools_data["tools"]
-                    
-                    # Register dynamic tools
-                    for tool_info in _discovered_tools:
-                        command_type = tool_info.get("commandType")
-                        description = tool_info.get("description", "Unity custom tool")
-                        is_dynamic = tool_info.get("isDynamic", False)
-                        
-                        if not command_type or not is_dynamic:
-                            continue
-                        
-                        # Create and register dynamic tool
-                        def create_tool_handler(cmd_type: str, desc: str):
-                            def tool_handler(ctx: Context, **kwargs) -> Dict[str, Any]:
-                                f"""Execute Unity tool: {cmd_type}
-                                
-                                {desc}
-                                """
-                                try:
-                                    bridge = getattr(ctx, 'bridge', None) or _unity_connection
-                                    if not bridge:
-                                        return {"success": False, "message": "No Unity connection available"}
-                                    
-                                    response = bridge.send_command(cmd_type, kwargs)
-                                    
-                                    if response.get("success"):
-                                        return {
-                                            "success": True,
-                                            "message": response.get("message", f"Tool {cmd_type} executed successfully"),
-                                            "data": response.get("data")
-                                        }
-                                    else:
-                                        return {
-                                            "success": False,
-                                            "message": response.get("error", f"Tool {cmd_type} execution failed")
-                                        }
-                                        
-                                except Exception as e:
-                                    return {"success": False, "message": f"Error executing tool {cmd_type}: {str(e)}"}
-                            
-                            return tool_handler
-                        
-                        # Register the tool
-                        tool_handler = create_tool_handler(command_type, description)
-                        tool_handler.__name__ = command_type.replace("_", " ").title().replace(" ", "")
-                        tool_handler.__doc__ = f"Execute Unity tool: {command_type}\n\n{description}"
-                        
-                        mcp.tool()(tool_handler)
-                        logger.info(f"Registered dynamic MCP tool: {command_type}")
-                    
-                    logger.info(f"Successfully registered {len([t for t in _discovered_tools if t.get('isDynamic')])} dynamic tools")
+                    logger.info(f"Discovered {len(_discovered_tools)} Unity tools for metadata")
             
             # Keep the connection for later use
             _unity_connection = temp_connection
@@ -138,28 +89,18 @@ def asset_creation_strategy() -> str:
     """Guide for discovering and using Unity MCP tools effectively."""
     global _discovered_tools
     
-    # Base built-in tools information
-    builtin_tools = [
-        "- `manage_editor`: Controls editor state and queries info.",
-        "- `execute_menu_item`: Executes Unity Editor menu items by path.",
-        "- `read_console`: Reads or clears Unity console messages, with filtering options.",
-        "- `manage_scene`: Manages scenes.",
-        "- `manage_gameobject`: Manages GameObjects in the scene.",
-        "- `manage_script`: Manages C# script files.",
-        "- `manage_asset`: Manages prefabs and assets."
-    ]
-    
-    # Add discovered dynamic tools
-    dynamic_tools = []
+    # Build tools list from discovered Unity tools
+    tools_list = []
     for tool in _discovered_tools:
-        if tool.get("isDynamic", False):
-            command_type = tool.get("commandType", "unknown")
-            description = tool.get("description", "Custom Unity tool")
-            dynamic_tools.append(f"- `{command_type}`: {description}")
+        command_type = tool.get("commandType", "unknown")
+        description = tool.get("description", "Unknown tool")
+        tools_list.append(f"- `{command_type}`: {description}")
     
-    tools_section = "\\n".join(builtin_tools)
-    if dynamic_tools:
-        tools_section += "\\n\\nCustom Tools:\\n" + "\\n".join(dynamic_tools)
+    # Build tools section
+    if tools_list:
+        tools_section = "\\n".join(tools_list)
+    else:
+        tools_section = "No tools discovered. Make sure Unity MCP Bridge is running and connected."
     
     return (
         f"Available Unity MCP Server Tools:\\n\\n"
@@ -167,7 +108,7 @@ def asset_creation_strategy() -> str:
         "Tips:\\n"
         "- Create prefabs for reusable GameObjects.\\n"
         "- Always include a camera and main light in your scenes.\\n"
-        "- Custom tools are automatically discovered from your Unity project.\\n"
+        "- Tools are automatically discovered from your Unity project.\\n"
     )
 
 # Run the server

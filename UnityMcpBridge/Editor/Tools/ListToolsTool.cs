@@ -38,29 +38,18 @@ namespace UnityMcpBridge.Editor.Tools
                 {
                     commandType = t.CommandType,
                     description = t.Description,
-                    typeName = t.TypeName,
-                    isBuiltIn = true,
-                    isDynamic = false
+                    typeName = t.TypeName
                 }).Concat(dynamicTools.Select(t => new
                 {
                     commandType = t.CommandType,
                     description = t.Description,
-                    typeName = t.TypeName,
-                    isBuiltIn = false,
-                    isDynamic = true
+                    typeName = t.TypeName
                 })).ToArray();
                 
                 return Response.Success("Successfully retrieved tool list", new
                 {
                     tools = allTools,
-                    totalCount = allTools.Length,
-                    builtInCount = builtInTools.Length,
-                    dynamicCount = dynamicTools.Count,
-                    summary = new
-                    {
-                        builtInTools = builtInTools.Select(t => t.CommandType).ToArray(),
-                        dynamicTools = dynamicTools.Select(t => t.CommandType).ToArray()
-                    }
+                    totalCount = allTools.Length
                 });
             }
             catch (System.Exception ex)
