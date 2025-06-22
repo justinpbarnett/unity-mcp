@@ -168,6 +168,21 @@ namespace UnityMcpBridge.Editor.Tools
         }
 
         /// <summary>
+        /// Get complete metadata for all registered tools
+        /// </summary>
+        /// <returns>List of complete tool metadata</returns>
+        public static List<McpToolMetadata> GetRegisteredToolsMetadata()
+        {
+            if (!_isInitialized)
+                Initialize();
+
+            return _registeredTools.Values
+                .Select(tool => tool.GetToolMetadata())
+                .OrderBy(metadata => metadata.CommandType)
+                .ToList();
+        }
+
+        /// <summary>
         /// Force re-scan and register tools (for hot reload during development)
         /// </summary>
         public static void ForceReload()

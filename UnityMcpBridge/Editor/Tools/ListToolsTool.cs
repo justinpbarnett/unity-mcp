@@ -2,59 +2,70 @@ using System.Linq;
 using Newtonsoft.Json.Linq;
 using UnityMcpBridge.Editor.Models;
 using UnityMcpBridge.Editor.Helpers;
+using System.Collections.Generic;
 
 namespace UnityMcpBridge.Editor.Tools
 {
     /// <summary>
-    /// Built-in tool: List all registered MCP tools
+    /// Built-in tool: List all registered MCP tools with complete metadata
     /// </summary>
     public class ListToolsTool : IUnityMcpTool
     {
         public string CommandType => "list_tools";
         
-        public string Description => "List all registered Unity MCP tools, including built-in and custom tools";
+        public string Description => "List all registered Unity MCP tools with complete metadata for MCP server registration";
+
+        public McpToolMetadata GetToolMetadata()
+        {
+            return new McpToolMetadata
+            {
+                CommandType = "list_tools",
+                Description = "List all registered Unity MCP tools with complete metadata for MCP server registration",
+                ReturnDescription = "Dictionary with complete tool metadata including parameters and descriptions",
+                Parameters = new List<McpToolParameter>()
+            };
+        }
         
         public object HandleCommand(JObject parameters)
         {
             try
             {
-                // Get information about all registered dynamic tools
+                // Get complete metadata for all built-in tools
+                var builtinToolsMetadata = BuiltinToolsMetadata.GetAllBuiltinToolsMetadata();
+                
+                // Get metadata for all registered dynamic tools
+                var dynamicToolsMetadata = new List<McpToolMetadata>();
                 var dynamicTools = DynamicToolRegistry.GetRegisteredToolsInfo();
                 
-                // Get built-in tool information
-                var builtInTools = new[]
+                foreach (var (commandType, description, typeName) in dynamicTools)
                 {
-                    new { CommandType = "manage_script", Description = "Manage C# script files", TypeName = "ManageScript" },
-                    new { CommandType = "manage_scene", Description = "Manage Unity scenes", TypeName = "ManageScene" },
-                    new { CommandType = "manage_editor", Description = "Editor control and status queries", TypeName = "ManageEditor" },
-                    new { CommandType = "manage_gameobject", Description = "Manage GameObjects in scene", TypeName = "ManageGameObject" },
-                    new { CommandType = "manage_asset", Description = "Manage prefabs and assets", TypeName = "ManageAsset" },
-                    new { CommandType = "read_console", Description = "Read Unity console messages", TypeName = "ReadConsole" },
-                    new { CommandType = "execute_menu_item", Description = "Execute Unity menu items", TypeName = "ExecuteMenuItem" },
-                };
+                    // Skip list_tools to avoid self-reference
+                    if (commandType == "list_tools")
+                        continue;
+                                 
+                    var tool = DynamicToolRegistry.GetTool(commandType);
+                    if (tool != null)
+                    {
+                        dynamicToolsMetadata.Add(tool.GetToolMetadata());
+                    }
+                }
                 
-                // Combine all tool information
-                var allTools = builtInTools.Select(t => new
-                {
-                    commandType = t.CommandType,
-                    description = t.Description,
-                    typeName = t.TypeName
-                }).Concat(dynamicTools.Select(t => new
-                {
-                    commandType = t.CommandType,
-                    description = t.Description,
-                    typeName = t.TypeName
-                })).ToArray();
+                // Combine all tool metadata
+                var allToolsMetadata = new List<McpToolMetadata>();
+                allToolsMetadata.AddRange(builtinToolsMetadata);
+                allToolsMetadata.AddRange(dynamicToolsMetadata);
                 
-                return Response.Success("Successfully retrieved tool list", new
+                return Response.Success("Successfully retrieved complete tool metadata", new
                 {
-                    tools = allTools,
-                    totalCount = allTools.Length
+                    tools = allToolsMetadata,
+                    totalCount = allToolsMetadata.Count,
+                    builtinCount = builtinToolsMetadata.Count,
+                    dynamicCount = dynamicToolsMetadata.Count
                 });
             }
             catch (System.Exception ex)
             {
-                return Response.Error($"Error getting tool list: {ex.Message}");
+                return Response.Error($"Error getting tool metadata: {ex.Message}");
             }
         }
     }

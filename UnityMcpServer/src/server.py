@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Optional
 from config import config
-from tools import register_all_tools
 from unity_connection import get_unity_connection, UnityConnection
 import json
 
@@ -43,6 +42,99 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
             _unity_connection = None
         logger.info("Unity MCP Server shut down")
 
+def register_dynamic_unity_tools(mcp: FastMCP, tools_metadata: List[Dict[str, Any]]):
+    """Register tools dynamically based on Unity metadata using a simpler approach."""
+    logger.info(f"Registering {len(tools_metadata)} tools from Unity metadata...")
+    
+    # Store metadata globally for prompt generation
+    global _discovered_tools
+    _discovered_tools = tools_metadata
+    
+    # Register individual tools
+    for tool_meta in tools_metadata:
+        try:
+            command_type = tool_meta.get("CommandType") or tool_meta.get("commandType")
+            description = tool_meta.get("Description") or tool_meta.get("description", "")
+            parameters = tool_meta.get("Parameters") or tool_meta.get("parameters", [])
+            
+            if not command_type:
+                logger.warning(f"Skipping tool with missing command type: {tool_meta}")
+                continue
+            
+            # Create a wrapper function for this specific tool
+            def make_tool_func(cmd_type: str, desc: str, params_info: List[Dict]):
+                # Build parameter signature dynamically
+                param_names = []
+                param_types = {}
+                param_docs = []
+                
+                for param in params_info:
+                    param_name = param.get("Name") or param.get("name", "unknown")
+                    param_type = param.get("Type") or param.get("type", "str")
+                    param_desc = param.get("Description") or param.get("description", "")
+                    param_required = param.get("Required", param.get("required", True))
+                    
+                    param_names.append(param_name)
+                    
+                    # Map types
+                    if param_type.lower() in ["string", "str"]:
+                        param_types[param_name] = str
+                    elif param_type.lower() in ["integer", "int"]:
+                        param_types[param_name] = int
+                    elif param_type.lower() in ["boolean", "bool"]:
+                        param_types[param_name] = bool
+                    else:
+                        param_types[param_name] = str
+                    
+                    param_docs.append(f"            {param_name}: {param_desc}")
+                
+                # Create the function body
+                def tool_func(ctx: Context, **kwargs) -> Dict[str, Any]:
+                    """Tool function dynamically created for Unity command."""
+                    try:
+                        bridge = getattr(ctx, 'bridge', None)
+                        if not bridge:
+                            bridge = get_unity_connection()
+                        
+                        if not bridge:
+                            return {"success": False, "message": "Unity connection not available"}
+                        
+                        # Send command to Unity
+                        response = bridge.send_command(cmd_type, kwargs)
+                        
+                        if response.get("success"):
+                            return {
+                                "success": True,
+                                "message": response.get("message", "Operation successful"),
+                                "data": response.get("data")
+                            }
+                        else:
+                            return {
+                                "success": False,
+                                "message": response.get("error", "Unknown error")
+                            }
+                    except Exception as e:
+                        return {"success": False, "message": f"Error: {str(e)}"}
+                
+                # Set metadata
+                tool_func.__name__ = cmd_type.replace('-', '_')
+                tool_func.__doc__ = f"{desc}\n\n        Args:\n" + "\n".join(param_docs) if param_docs else desc
+                
+                return tool_func
+            
+            # Create and register the tool
+            tool_func = make_tool_func(command_type, description, parameters)
+            
+            # Register the tool using FastMCP's official API
+            tool_name = command_type.replace('-', '_')
+            mcp.add_tool(tool_func, name=tool_name, description=description)
+            logger.info(f"Registered tool: {command_type}")
+            
+        except Exception as e:
+            logger.error(f"Failed to register tool {command_type}: {str(e)}")
+    
+    logger.info(f"Successfully registered {len(tools_metadata)} Unity tools")
+
 def create_mcp_server() -> FastMCP:
     """Create and configure the MCP server."""
     global _unity_connection, _discovered_tools
@@ -54,25 +146,27 @@ def create_mcp_server() -> FastMCP:
         lifespan=server_lifespan
     )
     
-    # Register all tools (static + dynamic interface)
-    register_all_tools(mcp)
-    
-    # Try to connect to Unity early for tool discovery metadata
+    # Try to connect to Unity early for dynamic tool registration
     try:
         temp_connection = get_unity_connection()
         if temp_connection:
-            logger.info("Early Unity connection successful, discovering tools...")
+            logger.info("Early Unity connection successful, discovering and registering tools...")
             
-            # Discover Unity tools for metadata only (don't register duplicates)
+            # Get complete tool metadata from Unity
             response = temp_connection.send_command("list_tools", {})
             if response.get("success") and response.get("data"):
                 tools_data = response["data"]
                 if isinstance(tools_data, dict) and "tools" in tools_data:
                     _discovered_tools = tools_data["tools"]
-                    logger.info(f"Discovered {len(_discovered_tools)} Unity tools for metadata")
+                    logger.info(f"Discovered {len(_discovered_tools)} Unity tools")
+                    
+                    # Dynamically register tools based on Unity metadata
+                    register_dynamic_unity_tools(mcp, _discovered_tools)
             
             # Keep the connection for later use
             _unity_connection = temp_connection
+        else:
+            logger.warning("Could not connect to Unity - tools will be unavailable")
         
     except Exception as e:
         logger.warning(f"Could not perform early tool discovery: {str(e)}")
