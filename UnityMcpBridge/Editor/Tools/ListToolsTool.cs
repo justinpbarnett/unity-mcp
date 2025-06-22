@@ -31,7 +31,6 @@ namespace UnityMcpBridge.Editor.Tools
                     new { CommandType = "manage_asset", Description = "Manage prefabs and assets", TypeName = "ManageAsset" },
                     new { CommandType = "read_console", Description = "Read Unity console messages", TypeName = "ReadConsole" },
                     new { CommandType = "execute_menu_item", Description = "Execute Unity menu items", TypeName = "ExecuteMenuItem" },
-                    new { CommandType = "list_tools", Description = "List all registered tools", TypeName = "ListToolsTool" }
                 };
                 
                 // Combine all tool information
