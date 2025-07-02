@@ -56,9 +56,25 @@ namespace UnityMcpBridge.Editor.Helpers
 
         /// <summary>
         /// Gets the platform-specific save location for the server.
+        /// MODIFIED: Uses repository location instead of AppData to match Claude Desktop configuration
         /// </summary>
         private static string GetSaveLocation()
         {
+            // Use the repository location to match Claude Desktop configuration
+            // This ensures Unity Bridge and Claude Desktop use the same Unity MCP installation
+            string repositoryPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                "My_Game_Projects",
+                "unity-mcp"
+            );
+            
+            // Fallback to AppData if repository doesn't exist (for other users)
+            if (Directory.Exists(repositoryPath))
+            {
+                return repositoryPath;
+            }
+            
+            // Original AppData logic as fallback
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 return Path.Combine(
