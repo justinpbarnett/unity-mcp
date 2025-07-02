@@ -1,8 +1,18 @@
-# Unity MCP ✨
+# Unity MCP ✨ - Klaus Ullrich Fork
 
 **Connect your Unity Editor to LLMs using the Model Context Protocol.**
 
+> **🔧 This is a fork of [justinpbarnett/unity-mcp](https://github.com/justinpbarnett/unity-mcp)** - Enhanced for AWMS (Adaptive Workflow Management System) v2.0 integration and reliability improvements.
+
 Unity MCP acts as a bridge, allowing AI assistants (like Claude, Cursor) to interact directly with your Unity Editor via a local **MCP (Model Context Protocol) Client**. Give your LLM tools to manage assets, control scenes, edit scripts, and automate tasks within Unity.
+
+## 🚀 Fork Enhancements
+
+- **AWMS Integration**: Designed as foundation for Adaptive Workflow Management System v2.0
+- **Code Audit Validated**: All 7 tools comprehensively audited for reliability
+- **Fork Integration**: ServerInstaller updated to use this fork, not original repository
+- **Documentation**: Enhanced architecture and setup documentation
+- **Testing**: Comprehensive test plan with 140+ validation test cases
 
 ---
 
@@ -72,10 +82,12 @@ Unity MCP connects your tools using two components:
 3.  Click `+` -> `Add package from git URL...`.
 4.  Enter:
     ```
-    https://github.com/justinpbarnett/unity-mcp.git?path=/UnityMcpBridge
+    https://github.com/KlausUllrich/unity-mcp.git?path=/UnityMcpBridge
     ```
 5.  Click `Add`.
 6. The MCP Server should automatically be installed onto your machine as a result of this process.
+   
+   > **🔧 Fork Enhancement**: This fork's ServerInstaller downloads from KlausUllrich/unity-mcp, ensuring you get the enhanced version with AWMS improvements.
 
 ### Step 2: Configure Your MCP Client
 
@@ -244,6 +256,25 @@ MIT License. See [LICENSE](https://www.google.com/url?sa=E&q=https%3A%2F%2Fgithu
 
 ---
 
+## AWMS Integration 🔧
+
+This fork is being developed as part of the **Adaptive Workflow Management System (AWMS) v2.0** project:
+
+- **AWMS Repository**: [KlausUllrich/AWMS](https://github.com/KlausUllrich/AWMS)
+- **Test Project**: [KlausUllrich/Unity_AWMS_Test](https://github.com/KlausUllrich/Unity_AWMS_Test)
+- **Architecture Documentation**: Comprehensive Unity MCP architecture and setup guides
+- **Testing Strategy**: 140+ test cases for validation and reliability
+
+### Enhanced Documentation
+- **Architecture**: Complete system architecture documentation
+- **Setup Guide**: Detailed installation and configuration guide  
+- **Testing Plan**: Comprehensive test plan for validation
+- **Code Audit**: All 7 tools audited for reliability and functionality
+
+---
+
 ## Acknowledgments 🙏
 
 Thanks to the contributors and the Unity team.
+
+**Original Project**: [justinpbarnett/unity-mcp](https://github.com/justinpbarnett/unity-mcp) - This fork builds upon the excellent foundation provided by Justin P. Barnett and contributors.
