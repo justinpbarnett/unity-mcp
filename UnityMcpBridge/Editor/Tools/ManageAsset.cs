@@ -177,6 +177,14 @@ namespace UnityMcpBridge.Editor.Tools
                     AssetDatabase.CreateAsset(mat, fullPath);
                     newAsset = mat;
                 }
+                else if (lowerAssetType == "physicsmaterial")
+                {
+                    PhysicsMaterial pmat = new PhysicsMaterial();
+                    if (properties != null)
+                        ApplyPhysicsMaterialProperties(pmat, properties);
+                    AssetDatabase.CreateAsset(pmat, fullPath);
+                    newAsset = pmat;
+                }
                 else if (lowerAssetType == "scriptableobject")
                 {
                     string scriptClassName = properties?["scriptClass"]?.ToString();
@@ -969,6 +977,77 @@ namespace UnityMcpBridge.Editor.Tools
             }
 
             // TODO: Add handlers for other property types (Vectors, Ints, Keywords, RenderQueue, etc.)
+            return modified;
+        }
+
+        /// <summary>
+        ///  Applies properties from JObject to a PhysicsMaterial.
+        /// </summary>
+        private static bool ApplyPhysicsMaterialProperties(PhysicsMaterial pmat, JObject properties)
+        {
+            if (pmat == null || properties == null)
+                return false;
+            bool modified = false;
+
+            // Example: Set dynamic friction
+            if (properties["DynamicFriction"]?.Type == JTokenType.Float)
+            {
+                float dynamicFriction = properties["DynamicFriction"].ToObject<float>();
+                pmat.dynamicFriction = dynamicFriction;
+                modified = true;
+            }
+
+            // Example: Set static friction
+            if (properties["StaticFriction"]?.Type == JTokenType.Float)
+            {
+                float staticFriction = properties["StaticFriction"].ToObject<float>();
+                pmat.staticFriction = staticFriction;
+                modified = true;
+            }
+
+            // Example: Set bounciness
+            if (properties["Bounciness"]?.Type == JTokenType.Float)
+            {
+                float bounciness = properties["Bounciness"].ToObject<float>();
+                pmat.bounciness = bounciness;
+                modified = true;
+            }
+
+            List<String> averageList = new List<String>{"ave", "Ave", "average", "Average"};
+            List<String> multiplyList = new List<String>{"mul", "Mul", "mult", "Mult", "multiply", "Multiply"};
+            List<String> minimumList = new List<String>{"min", "Min", "minimum", "Minimum"};
+            List<String> maximumList = new List<String>{"max", "Max", "maximum", "Maximum"};
+
+            // Example: Set friction combine
+            if (properties["FrictionCombine"]?.Type == JTokenType.String)
+            {
+                string frictionCombine = properties["FrictionCombine"].ToString();
+                if (averageList.Contains(frictionCombine))
+                    pmat.frictionCombine = PhysicsMaterialCombine.Average;
+                else if (multiplyList.Contains(frictionCombine))
+                    pmat.frictionCombine = PhysicsMaterialCombine.Multiply;
+                else if (minimumList.Contains(frictionCombine))
+                    pmat.frictionCombine = PhysicsMaterialCombine.Minimum;
+                else if (maximumList.Contains(frictionCombine))
+                    pmat.frictionCombine = PhysicsMaterialCombine.Maximum;
+                modified = true;
+            }
+
+            // Example: Set bounce combine
+            if (properties["BounceCombine"]?.Type == JTokenType.String)
+            {
+                string bounceCombine = properties["BounceCombine"].ToString();
+                if (averageList.Contains(bounceCombine))
+                    pmat.bounceCombine = PhysicsMaterialCombine.Average;
+                else if (multiplyList.Contains(bounceCombine))
+                    pmat.bounceCombine = PhysicsMaterialCombine.Multiply;
+                else if (minimumList.Contains(bounceCombine))
+                    pmat.bounceCombine = PhysicsMaterialCombine.Minimum;
+                else if (maximumList.Contains(bounceCombine))
+                    pmat.bounceCombine = PhysicsMaterialCombine.Maximum;
+                modified = true;
+            }
+
             return modified;
         }
 
