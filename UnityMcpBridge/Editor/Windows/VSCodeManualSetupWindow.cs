@@ -5,28 +5,26 @@ using UnityMcpBridge.Editor.Models;
 
 namespace UnityMcpBridge.Editor.Windows
 {
-    // Editor window to display manual configuration instructions
-    public class ManualConfigEditorWindow : EditorWindow
+    public class VSCodeManualSetupWindow : ManualConfigEditorWindow
     {
-        protected string configPath;
-        protected string configJson;
-        protected Vector2 scrollPos;
-        protected bool pathCopied = false;
-        protected bool jsonCopied = false;
-        protected float copyFeedbackTimer = 0;
-        protected McpClient mcpClient;
-
-        public static void ShowWindow(string configPath, string configJson, McpClient mcpClient)
+        public static new void ShowWindow(string configPath, string configJson)
         {
-            var window = GetWindow<ManualConfigEditorWindow>("Manual Configuration");
+            var window = GetWindow<VSCodeManualSetupWindow>("VSCode GitHub Copilot Setup");
             window.configPath = configPath;
             window.configJson = configJson;
-            window.mcpClient = mcpClient;
-            window.minSize = new Vector2(500, 400);
+            window.minSize = new Vector2(550, 500);
+            
+            // Create a McpClient for VSCode
+            window.mcpClient = new McpClient
+            {
+                name = "VSCode GitHub Copilot",
+                mcpType = McpTypes.VSCode
+            };
+            
             window.Show();
         }
 
-        protected virtual void OnGUI()
+        protected override void OnGUI()
         {
             scrollPos = EditorGUILayout.BeginScrollView(scrollPos);
 
@@ -39,7 +37,7 @@ namespace UnityMcpBridge.Editor.Windows
             );
             GUI.Label(
                 new Rect(titleRect.x + 10, titleRect.y + 6, titleRect.width - 20, titleRect.height),
-                mcpClient.name + " Manual Configuration",
+                "VSCode GitHub Copilot MCP Setup",
                 EditorStyles.boldLabel
             );
             EditorGUILayout.Space(10);
@@ -59,7 +57,7 @@ namespace UnityMcpBridge.Editor.Windows
                     headerRect.width - 16,
                     headerRect.height
                 ),
-                "The automatic configuration failed. Please follow these steps:",
+                "Setting up GitHub Copilot in VSCode with Unity MCP",
                 EditorStyles.boldLabel
             );
             EditorGUILayout.Space(10);
@@ -70,27 +68,48 @@ namespace UnityMcpBridge.Editor.Windows
             };
 
             EditorGUILayout.LabelField(
-                "1. Open " + mcpClient.name + " config file by either:",
+                "1. Prerequisites",
+                EditorStyles.boldLabel
+            );
+            EditorGUILayout.LabelField(
+                "• Ensure you have VSCode installed",
                 instructionStyle
             );
-            if (mcpClient.mcpType == McpTypes.ClaudeDesktop)
-            {
-                EditorGUILayout.LabelField(
-                    "    a) Going to Settings > Developer > Edit Config",
-                    instructionStyle
-                );
-            }
-            else if (mcpClient.mcpType == McpTypes.Cursor)
-            {
-                EditorGUILayout.LabelField(
-                    "    a) Going to File > Preferences > Cursor Settings > MCP > Add new global MCP server",
-                    instructionStyle
-                );
-            }
-            EditorGUILayout.LabelField("    OR", instructionStyle);
             EditorGUILayout.LabelField(
-                "    b) Opening the configuration file at:",
+                "• Ensure you have GitHub Copilot extension installed in VSCode",
                 instructionStyle
+            );
+            EditorGUILayout.LabelField(
+                "• Ensure you have a valid GitHub Copilot subscription",
+                instructionStyle
+            );
+            EditorGUILayout.Space(5);
+            
+            EditorGUILayout.LabelField(
+                "2. Steps to Configure",
+                EditorStyles.boldLabel
+            );
+            EditorGUILayout.LabelField(
+                "a) Open VSCode Settings (File > Preferences > Settings)",
+                instructionStyle
+            );
+            EditorGUILayout.LabelField(
+                "b) Click on the 'Open Settings (JSON)' button in the top right",
+                instructionStyle
+            );
+            EditorGUILayout.LabelField(
+                "c) Add the MCP configuration shown below to your settings.json file",
+                instructionStyle
+            );
+            EditorGUILayout.LabelField(
+                "d) Save the file and restart VSCode",
+                instructionStyle
+            );
+            EditorGUILayout.Space(5);
+            
+            EditorGUILayout.LabelField(
+                "3. VSCode settings.json location:",
+                EditorStyles.boldLabel
             );
 
             // Path section with improved styling
@@ -98,18 +117,29 @@ namespace UnityMcpBridge.Editor.Windows
             string displayPath;
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                displayPath = mcpClient.windowsConfigPath;
+                displayPath = System.IO.Path.Combine(
+                    System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+                    "Code",
+                    "User",
+                    "settings.json"
+                );
             }
-            else if (
-                RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                || RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-            )
+            else 
             {
-                displayPath = mcpClient.linuxConfigPath;
+                displayPath = System.IO.Path.Combine(
+                    System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile),
+                    "Library",
+                    "Application Support",
+                    "Code",
+                    "User",
+                    "settings.json"
+                );
             }
-            else
+
+            // Store the path in the base class config path
+            if (string.IsNullOrEmpty(configPath))
             {
-                displayPath = configPath;
+                configPath = displayPath;
             }
 
             // Prevent text overflow by allowing the text field to wrap
@@ -172,12 +202,11 @@ namespace UnityMcpBridge.Editor.Windows
 
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.EndVertical();
-
             EditorGUILayout.Space(10);
 
             EditorGUILayout.LabelField(
-                "2. Paste the following JSON configuration:",
-                instructionStyle
+                "4. Add this configuration to your settings.json:",
+                EditorStyles.boldLabel
             );
 
             // JSON section with improved styling
@@ -224,7 +253,19 @@ namespace UnityMcpBridge.Editor.Windows
 
             EditorGUILayout.Space(10);
             EditorGUILayout.LabelField(
-                "3. Save the file and restart " + mcpClient.name,
+                "5. After configuration:",
+                EditorStyles.boldLabel
+            );
+            EditorGUILayout.LabelField(
+                "• Restart VSCode",
+                instructionStyle
+            );
+            EditorGUILayout.LabelField(
+                "• GitHub Copilot will now be able to interact with your Unity project through the MCP protocol",
+                instructionStyle
+            );
+            EditorGUILayout.LabelField(
+                "• Remember to have the Unity MCP Bridge running in Unity Editor",
                 instructionStyle
             );
 
@@ -245,19 +286,10 @@ namespace UnityMcpBridge.Editor.Windows
             EditorGUILayout.EndScrollView();
         }
 
-        protected virtual void Update()
+        protected override void Update()
         {
-            // Handle the feedback message timer
-            if (copyFeedbackTimer > 0)
-            {
-                copyFeedbackTimer -= Time.deltaTime;
-                if (copyFeedbackTimer <= 0)
-                {
-                    pathCopied = false;
-                    jsonCopied = false;
-                    Repaint();
-                }
-            }
+            // Call the base implementation which handles the copy feedback timer
+            base.Update();
         }
     }
 }
