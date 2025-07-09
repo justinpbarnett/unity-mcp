@@ -3,6 +3,7 @@ Configuration settings for the Unity MCP Server.
 This file contains all configurable parameters for the server.
 """
 
+import argparse
 from dataclasses import dataclass
 
 @dataclass
@@ -26,5 +27,24 @@ class ServerConfig:
     max_retries: int = 3
     retry_delay: float = 1.0
 
-# Create a global config instance
-config = ServerConfig() 
+# Parse command line arguments
+def parse_args():
+    parser = argparse.ArgumentParser(description='Unity MCP Server')
+    parser.add_argument('--unity-host', dest='unity_host', type=str, default="localhost",
+                        help='Host address of Unity Editor (default: localhost)')
+    parser.add_argument('--unity-port', dest='unity_port', type=int, default=6400,
+                        help='Port number of Unity Editor (default: 6400)')
+    parser.add_argument('--log-level', dest='log_level', type=str, default="INFO",
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+                        help='Logging level (default: INFO)')
+    return parser.parse_args()
+
+# Create a global config instance with default values
+config = ServerConfig()
+
+# This will be called from server.py to update the config with command line arguments
+def load_config_from_args():
+    args = parse_args()
+    config.unity_host = args.unity_host
+    config.unity_port = args.unity_port
+    config.log_level = args.log_level 
