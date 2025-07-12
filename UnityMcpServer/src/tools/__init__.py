@@ -5,6 +5,7 @@ from .manage_gameobject import register_manage_gameobject_tools
 from .manage_asset import register_manage_asset_tools
 from .read_console import register_read_console_tools
 from .execute_menu_item import register_execute_menu_item_tools
+from .get_compile_errors import register_get_compile_errors_tools
 
 def register_all_tools(mcp):
     """Register all refactored tools with the MCP server."""

@@ -1,33 +1,40 @@
-# AI-related files
-.cursorrules
-.cursorignore
-CLAUDE.md
+# Log files
+log_*.json
 
-# Code-copy related files
-.clipignore
-
-# Python-generated files
+# Python cache
 __pycache__/
-__pycache__.meta
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
 build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
 wheels/
-*.egg-info
-UnityMcpServer/**/*.meta
-UnityMcpServer.meta
+*.egg-info/
+.installed.cfg
+*.egg
 
 # Virtual environments
-.venv
-
-# Unity Editor
-*.unitypackage
-*.asset
-UnityMcpBridge.meta
-LICENSE.meta
-README.md.meta
-CONTRIBUTING.md.meta
+venv/
+env/
+ENV/
 
 # IDE
-.idea/
 .vscode/
-.aider*
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
