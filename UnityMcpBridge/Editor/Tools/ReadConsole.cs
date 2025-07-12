@@ -28,6 +28,7 @@ namespace UnityMcpBridge.Editor.Tools
         private static FieldInfo _fileField;
         private static FieldInfo _lineField;
         private static FieldInfo _instanceIdField;
+        private const int MaxCount = 20;
 
         // Note: Timestamp is not directly available in LogEntry; need to parse message or find alternative?
 
@@ -218,6 +219,7 @@ namespace UnityMcpBridge.Editor.Tools
             bool includeStacktrace
         )
         {
+            count = Math.Min(MaxCount, count ?? MaxCount);
             List<object> formattedEntries = new List<object>();
             int retrievedCount = 0;
 
