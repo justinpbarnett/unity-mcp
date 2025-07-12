@@ -6,6 +6,8 @@ from typing import AsyncIterator, Dict, Any, List, Optional
 from config import config
 from unity_connection import get_unity_connection, UnityConnection
 import json
+from datetime import datetime
+import os
 
 # Configure logging using settings from config
 logging.basicConfig(
@@ -124,11 +126,30 @@ def register_dynamic_unity_tools(mcp: FastMCP, tools_metadata: List[Dict[str, An
             
             # Create and register the tool
             tool_func = make_tool_func(command_type, description, parameters)
-            
             # Register the tool using FastMCP's official API
             tool_name = command_type.replace('-', '_')
             mcp.add_tool(tool_func, name=tool_name, description=description)
             logger.info(f"Registered tool: {command_type}")
+
+            
+            # Debug: Save current tools in MCP registry to JSON file
+            current_tools = {}
+            for name, tool in mcp._tool_manager._tools.items():
+                current_tools[name] = {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "function_name": tool.function.__name__ if hasattr(tool, 'function') else 'unknown'
+                }
+            
+            # Generate timestamp and save to JSON file
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            log_filename = f"log_{timestamp}.json"
+            log_filepath = os.path.join(os.getcwd(), log_filename)
+            
+            with open(log_filepath, 'w', encoding='utf-8') as f:
+                json.dump(current_tools, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"Current tools in MCP registry saved to: {log_filepath}")
             
         except Exception as e:
             logger.error(f"Failed to register tool {command_type}: {str(e)}")
