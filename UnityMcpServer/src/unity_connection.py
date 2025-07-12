@@ -15,7 +15,7 @@ logger = logging.getLogger("unity-mcp-server")
 @dataclass
 class UnityConnection:
     """Manages the socket connection to the Unity Editor."""
-    host: str = config.unity_host
+    host: str = None  # Will be set dynamically
     port: int = config.unity_port
     sock: socket.socket = None  # Socket for Unity communication
 
@@ -24,6 +24,9 @@ class UnityConnection:
         if self.sock:
             return True
         try:
+            # Set host dynamically if not already set
+            if self.host is None:
+                self.host = config.unity_host
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.connect((self.host, self.port))
             logger.info(f"Connected to Unity at {self.host}:{self.port}")
