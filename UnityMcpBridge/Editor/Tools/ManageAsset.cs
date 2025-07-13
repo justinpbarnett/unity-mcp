@@ -870,6 +870,64 @@ namespace UnityMcpBridge.Editor.Tools
                 return false;
             bool modified = false;
 
+            // Loop through all properties for direct assignment
+            foreach (var prop in properties.Properties())
+            {
+                string propName = prop.Name;
+                JToken value = prop.Value;
+                if (mat.HasProperty(propName))
+                {
+                    // Handle color arrays (e.g., _Color: [0,1,0,1])
+                    if (value is JArray arr && (arr.Count == 3 || arr.Count == 4))
+                    {
+                        try
+                        {
+                            Color newColor = new Color(
+                                arr[0].ToObject<float>(),
+                                arr[1].ToObject<float>(),
+                                arr[2].ToObject<float>(),
+                                arr.Count > 3 ? arr[3].ToObject<float>() : 1.0f
+                            );
+                            if (mat.GetColor(propName) != newColor)
+                            {
+                                mat.SetColor(propName, newColor);
+                                modified = true;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.LogWarning($"Error parsing color array for '{propName}': {ex.Message}");
+                        }
+                    }
+                    // Handle float/int
+                    else if (value.Type == JTokenType.Float || value.Type == JTokenType.Integer)
+                    {
+                        float newVal = value.ToObject<float>();
+                        if (mat.GetFloat(propName) != newVal)
+                        {
+                            mat.SetFloat(propName, newVal);
+                            modified = true;
+                        }
+                    }
+                    // Handle string (could be texture path)
+                    else if (value.Type == JTokenType.String)
+                    {
+                        string strVal = value.ToString();
+                        // Try to load as texture
+                        Texture tex = AssetDatabase.LoadAssetAtPath<Texture>(SanitizeAssetPath(strVal));
+                        if (tex != null)
+                        {
+                            if (mat.GetTexture(propName) != tex)
+                            {
+                                mat.SetTexture(propName, tex);
+                                modified = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Existing structured handling (for backward compatibility)
             // Example: Set shader
             if (properties["shader"]?.Type == JTokenType.String)
             {
