@@ -276,11 +276,16 @@ namespace UnityMcpBridge.Editor.Windows
 
         private string WriteToConfig(string pythonDir, string configPath)
         {
+            // Convert pythonDir to WSL path if running on Windows
+            string finalPythonDir = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? PathConverter.WindowsPathToWslPath(pythonDir)
+                : pythonDir;
+
             // Create configuration object for unityMCP
             McpConfigServer unityMCPConfig = new()
             {
                 command = "uv",
-                args = new[] { "--directory", pythonDir, "run", "server.py" },
+                args = new[] { "--directory", finalPythonDir, "run", "server.py" },
             };
 
             JsonSerializerSettings jsonSettings = new() { Formatting = Formatting.Indented };
@@ -335,6 +340,11 @@ namespace UnityMcpBridge.Editor.Windows
             // Get the Python directory path using Package Manager API
             string pythonDir = FindPackagePythonDirectory();
 
+            // Convert pythonDir to WSL path if running on Windows
+            string finalPythonDir = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? PathConverter.WindowsPathToWslPath(pythonDir)
+                : pythonDir;
+
             // Create the manual configuration message
             McpConfig jsonConfig = new()
             {
@@ -343,7 +353,7 @@ namespace UnityMcpBridge.Editor.Windows
                     unityMCP = new McpConfigServer
                     {
                         command = "uv",
-                        args = new[] { "--directory", pythonDir, "run", "server.py" },
+                        args = new[] { "--directory", finalPythonDir, "run", "server.py" },
                     },
                 },
             };
@@ -547,11 +557,16 @@ namespace UnityMcpBridge.Editor.Windows
                 if (config?.mcpServers?.unityMCP != null)
                 {
                     string pythonDir = ServerInstaller.GetServerPath();
+                    // Convert pythonDir to WSL path for comparison if running on Windows
+                    string comparisonPythonDir = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                        ? PathConverter.WindowsPathToWslPath(pythonDir)
+                        : pythonDir;
+
                     if (
                         pythonDir != null
                         && Array.Exists(
                             config.mcpServers.unityMCP.args,
-                            arg => arg.Contains(pythonDir, StringComparison.Ordinal)
+                            arg => arg.Contains(comparisonPythonDir, StringComparison.Ordinal)
                         )
                     )
                     {
