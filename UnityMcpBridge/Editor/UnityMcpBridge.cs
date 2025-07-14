@@ -267,6 +267,7 @@ namespace UnityMcpBridge.Editor
 
                         // Normal JSON command processing
                         Command command = JsonConvert.DeserializeObject<Command>(commandText);
+                        
                         if (command == null)
                         {
                             var nullCommandResponse = new
