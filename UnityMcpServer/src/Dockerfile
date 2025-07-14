@@ -22,6 +22,8 @@ COPY tools/ /app/tools/
 # Install dependencies using uv
 RUN uv pip install --system -e .
 
+# Create a simple entrypoint script to run the server with any provided arguments
+RUN echo '#!/bin/sh\nexec uv run server.py "$@"' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
-# Command to run the server
-CMD ["uv", "run", "server.py"] 
+# Use the entrypoint script
+ENTRYPOINT ["/app/entrypoint.sh"] 

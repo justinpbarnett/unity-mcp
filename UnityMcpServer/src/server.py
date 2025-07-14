@@ -3,9 +3,12 @@ import logging
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List
-from config import config
+from config import config, load_config_from_args
 from tools import register_all_tools
 from unity_connection import get_unity_connection, UnityConnection
+
+# Load config from command line arguments
+load_config_from_args()
 
 # Configure logging using settings from config
 logging.basicConfig(
@@ -13,6 +16,7 @@ logging.basicConfig(
     format=config.log_format
 )
 logger = logging.getLogger("unity-mcp-server")
+logger.info(f"Starting server with Unity connection to {config.unity_host}:{config.unity_port}")
 
 # Global connection state
 _unity_connection: UnityConnection = None
