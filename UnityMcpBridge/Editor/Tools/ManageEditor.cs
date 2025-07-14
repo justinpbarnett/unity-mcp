@@ -13,8 +13,14 @@ namespace UnityMcpBridge.Editor.Tools
     /// Handles operations related to controlling and querying the Unity Editor state,
     /// including managing Tags and Layers.
     /// </summary>
+    [InitializeOnLoad]
     public static class ManageEditor
     {
+        static ManageEditor()
+        {
+            CommandRegistry.RegisterCommand("manage_editor", HandleCommand);
+        }
+
         // Constant for starting user layer index
         private const int FirstUserLayerIndex = 8;
 

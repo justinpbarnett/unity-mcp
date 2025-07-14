@@ -15,9 +15,15 @@ namespace UnityMcpBridge.Editor.Tools
     /// <summary>
     /// Handles GameObject manipulation within the current scene (CRUD, find, components).
     /// </summary>
+    [InitializeOnLoad]
     public static class ManageGameObject
     {
         // --- Main Handler ---
+
+        static ManageGameObject()
+        {
+            CommandRegistry.RegisterCommand("manage_gameobject", HandleCommand);
+        }
 
         public static object HandleCommand(JObject @params)
         {
