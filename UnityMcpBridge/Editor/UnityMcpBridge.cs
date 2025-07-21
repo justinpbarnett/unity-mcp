@@ -381,6 +381,7 @@ namespace UnityMcpBridge.Editor
                     "manage_shader" => ManageShader.HandleCommand(paramsObject),
                     "read_console" => ReadConsole.HandleCommand(paramsObject),
                     "execute_menu_item" => ExecuteMenuItem.HandleCommand(paramsObject),
+					"fix_asmdef_references" => FixAsmdefReferences.HandleCommand(paramsObject),
                     _ => throw new ArgumentException(
                         $"Unknown or unsupported command type: {command.type}"
                     ),
