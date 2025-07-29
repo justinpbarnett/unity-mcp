@@ -1,0 +1,35 @@
+# Unity MCP Server - Production Dependencies
+
+# Core MCP Framework
+mcp>=1.0.0
+
+# Async support
+asyncio-mqtt>=0.11.0
+
+# JSON handling and data validation
+pydantic>=2.0.0
+typing-extensions>=4.0.0
+
+# Logging and monitoring
+structlog>=23.0.0
+prometheus-client>=0.17.0
+
+# Network and HTTP
+aiohttp>=3.8.0
+websockets>=11.0.0
+
+# Development and testing dependencies (optional)
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.0.0
+
+# Documentation (optional)
+mkdocs>=1.5.0
+mkdocs-material>=9.0.0
+
+# Production deployment (optional)
+gunicorn>=21.0.0
+uvicorn>=0.23.0
