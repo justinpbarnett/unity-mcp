@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -21,6 +22,9 @@ namespace UnityMcpBridge.Editor
         private static TcpListener listener;
         private static bool isRunning = false;
         private static readonly object lockObj = new();
+        private static readonly object startStopLock = new();
+        private static bool initScheduled = false;
+        private static double nextHeartbeatAt = 0.0f;
         private static Dictionary<
             string,
             (string commandJson, TaskCompletionSource<string> tcs)
@@ -41,17 +45,10 @@ namespace UnityMcpBridge.Editor
             
             try
             {
-                // Discover new port and save it
-                currentUnityPort = PortManager.DiscoverNewPort();
-                
-                listener = new TcpListener(IPAddress.Loopback, currentUnityPort);
-                listener.Start();
-                isRunning = true;
+                // Prefer stored project port and start using the robust Start() path (with retries/options)
+                currentUnityPort = PortManager.GetPortWithFallback();
+                Start();
                 isAutoConnectMode = true;
-                
-                Debug.Log($"UnityMcpBridge auto-connected on port {currentUnityPort}");
-                Task.Run(ListenerLoop);
-                EditorApplication.update += ProcessCommands;
             }
             catch (Exception ex)
             {
@@ -81,51 +78,130 @@ namespace UnityMcpBridge.Editor
 
         static UnityMcpBridge()
         {
+            // Immediate start for minimal downtime, plus quit hook
             Start();
             EditorApplication.quitting += Stop;
+            AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
+            AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
+        }
+
+        /// <summary>
+        /// Initialize the MCP bridge after Unity is fully loaded and compilation is complete.
+        /// This prevents repeated restarts during script compilation that cause port hopping.
+        /// </summary>
+        private static void InitializeAfterCompilation()
+        {
+            initScheduled = false;
+
+            // Play-mode friendly: allow starting in play mode; only defer while compiling
+            if (EditorApplication.isCompiling)
+            {
+                ScheduleInitRetry();
+                return;
+            }
+
+            if (!isRunning)
+            {
+                Start();
+                if (!isRunning)
+                {
+                    // If a race prevented start, retry later
+                    ScheduleInitRetry();
+                }
+            }
+        }
+
+        private static void ScheduleInitRetry()
+        {
+            if (initScheduled)
+            {
+                return;
+            }
+            initScheduled = true;
+            EditorApplication.delayCall += InitializeAfterCompilation;
         }
 
         public static void Start()
         {
-            Stop();
-
-            try
+            lock (startStopLock)
             {
-                ServerInstaller.EnsureServerInstalled();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"Failed to ensure UnityMcpServer is installed: {ex.Message}");
-            }
-
-            if (isRunning)
-            {
-                return;
-            }
-
-            try
-            {
-                // Use PortManager to get available port with automatic fallback
-                currentUnityPort = PortManager.GetPortWithFallback();
-                
-                listener = new TcpListener(IPAddress.Loopback, currentUnityPort);
-                listener.Start();
-                isRunning = true;
-                isAutoConnectMode = false; // Normal startup mode
-                Debug.Log($"UnityMcpBridge started on port {currentUnityPort}.");
-                // Assuming ListenerLoop and ProcessCommands are defined elsewhere
-                Task.Run(ListenerLoop);
-                EditorApplication.update += ProcessCommands;
-            }
-            catch (SocketException ex)
-            {
-                if (ex.SocketErrorCode == SocketError.AddressAlreadyInUse)
+                // Don't restart if already running on a working port
+                if (isRunning && listener != null)
                 {
-                    Debug.LogError(
-                        $"Port {currentUnityPort} is already in use. This should not happen with dynamic port allocation."
-                    );
+                    Debug.Log($"<b><color=#2EA3FF>UNITY-MCP</color></b>: UnityMcpBridge already running on port {currentUnityPort}");
+                    return;
                 }
-                else
+
+                Stop();
+
+                // Attempt fast bind with stored-port preference (sticky per-project)
+                try
+                {
+                    // Always consult PortManager first so we prefer the persisted project port
+                    currentUnityPort = PortManager.GetPortWithFallback();
+
+                    const int maxImmediateRetries = 3;
+                    const int retrySleepMs = 75;
+                    int attempt = 0;
+                    for (;;)
+                    {
+                        try
+                        {
+                            listener = new TcpListener(IPAddress.Loopback, currentUnityPort);
+                            listener.Server.SetSocketOption(
+                                SocketOptionLevel.Socket,
+                                SocketOptionName.ReuseAddress,
+                                true
+                            );
+                            // Minimize TIME_WAIT by sending RST on close
+                            try
+                            {
+                                listener.Server.LingerState = new LingerOption(true, 0);
+                            }
+                            catch (Exception)
+                            {
+                                // Ignore if not supported on platform
+                            }
+                            listener.Start();
+                            break;
+                        }
+                        catch (SocketException se) when (se.SocketErrorCode == SocketError.AddressAlreadyInUse && attempt < maxImmediateRetries)
+                        {
+                            attempt++;
+                            Thread.Sleep(retrySleepMs);
+                            continue;
+                        }
+                        catch (SocketException se) when (se.SocketErrorCode == SocketError.AddressAlreadyInUse && attempt >= maxImmediateRetries)
+                        {
+                            currentUnityPort = PortManager.GetPortWithFallback();
+                            listener = new TcpListener(IPAddress.Loopback, currentUnityPort);
+                            listener.Server.SetSocketOption(
+                                SocketOptionLevel.Socket,
+                                SocketOptionName.ReuseAddress,
+                                true
+                            );
+                            try
+                            {
+                                listener.Server.LingerState = new LingerOption(true, 0);
+                            }
+                            catch (Exception)
+                            {
+                            }
+                            listener.Start();
+                            break;
+                        }
+                    }
+
+                    isRunning = true;
+                    isAutoConnectMode = false;
+                    Debug.Log($"<b><color=#2EA3FF>UNITY-MCP</color></b>: UnityMcpBridge started on port {currentUnityPort}.");
+                    Task.Run(ListenerLoop);
+                    EditorApplication.update += ProcessCommands;
+                    // Write initial heartbeat immediately
+                    WriteHeartbeat(false);
+                    nextHeartbeatAt = EditorApplication.timeSinceStartup + 0.5f;
+                }
+                catch (SocketException ex)
                 {
                     Debug.LogError($"Failed to start TCP listener: {ex.Message}");
                 }
@@ -134,22 +210,28 @@ namespace UnityMcpBridge.Editor
 
         public static void Stop()
         {
-            if (!isRunning)
+            lock (startStopLock)
             {
-                return;
-            }
+                if (!isRunning)
+                {
+                    return;
+                }
 
-            try
-            {
-                listener?.Stop();
-                listener = null;
-                isRunning = false;
-                EditorApplication.update -= ProcessCommands;
-                Debug.Log("UnityMcpBridge stopped.");
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"Error stopping UnityMcpBridge: {ex.Message}");
+                try
+                {
+                    // Mark as stopping early to avoid accept logging during disposal
+                    isRunning = false;
+                    // Mark heartbeat one last time before stopping
+                    WriteHeartbeat(false);
+                    listener?.Stop();
+                    listener = null;
+                    EditorApplication.update -= ProcessCommands;
+                    Debug.Log("<b><color=#2EA3FF>UNITY-MCP</color></b>: UnityMcpBridge stopped.");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"Error stopping UnityMcpBridge: {ex.Message}");
+                }
             }
         }
 
@@ -172,6 +254,14 @@ namespace UnityMcpBridge.Editor
 
                     // Fire and forget each client connection
                     _ = HandleClientAsync(client);
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Listener was disposed during stop/reload; exit quietly
+                    if (!isRunning)
+                    {
+                        break;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -242,6 +332,14 @@ namespace UnityMcpBridge.Editor
             List<string> processedIds = new();
             lock (lockObj)
             {
+                // Periodic heartbeat while editor is idle/processing
+                double now = EditorApplication.timeSinceStartup;
+                if (now >= nextHeartbeatAt)
+                {
+                    WriteHeartbeat(false);
+                    nextHeartbeatAt = now + 0.5f;
+                }
+
                 foreach (
                     KeyValuePair<
                         string,
@@ -467,6 +565,60 @@ namespace UnityMcpBridge.Editor
             catch
             {
                 return "Could not summarize parameters";
+            }
+        }
+
+        // Heartbeat/status helpers
+        private static void OnBeforeAssemblyReload()
+        {
+            WriteHeartbeat(true);
+        }
+
+        private static void OnAfterAssemblyReload()
+        {
+            // Will be overwritten by Start(), but mark as alive quickly
+            WriteHeartbeat(false);
+        }
+
+        private static void WriteHeartbeat(bool reloading)
+        {
+            try
+            {
+                string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".unity-mcp");
+                Directory.CreateDirectory(dir);
+                string filePath = Path.Combine(dir, $"unity-mcp-status-{ComputeProjectHash(Application.dataPath)}.json");
+                var payload = new
+                {
+                    unity_port = currentUnityPort,
+                    reloading,
+                    project_path = Application.dataPath,
+                    last_heartbeat = DateTime.UtcNow.ToString("O")
+                };
+                File.WriteAllText(filePath, JsonConvert.SerializeObject(payload));
+            }
+            catch (Exception)
+            {
+                // Best-effort only
+            }
+        }
+
+        private static string ComputeProjectHash(string input)
+        {
+            try
+            {
+                using var sha1 = System.Security.Cryptography.SHA1.Create();
+                byte[] bytes = System.Text.Encoding.UTF8.GetBytes(input ?? string.Empty);
+                byte[] hashBytes = sha1.ComputeHash(bytes);
+                var sb = new System.Text.StringBuilder();
+                foreach (byte b in hashBytes)
+                {
+                    sb.Append(b.ToString("x2"));
+                }
+                return sb.ToString()[..8];
+            }
+            catch
+            {
+                return "default";
             }
         }
     }
