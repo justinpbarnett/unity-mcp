@@ -68,6 +68,15 @@
       "dependencies": {},
       "url": "https://packages.unity.com"
     },
+    "com.unity.ide.windsurf": {
+      "version": "https://github.com/Asuta/com.unity.ide.windsurf.git",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {
+        "com.unity.test-framework": "1.1.9"
+      },
+      "hash": "6161accf3e7beab96341813913e714c7e2fb5c5d"
+    },
     "com.unity.nuget.newtonsoft-json": {
       "version": "3.2.1",
       "depth": 1,
