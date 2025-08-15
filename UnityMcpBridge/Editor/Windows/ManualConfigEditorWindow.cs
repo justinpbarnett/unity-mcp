@@ -94,6 +94,13 @@ namespace UnityMcpBridge.Editor.Windows
                     instructionStyle
                 );
             }
+            else if (mcpClient?.mcpType == McpTypes.Kiro)
+            {
+                EditorGUILayout.LabelField(
+                    "    a) Going to File > Settings > Settings > Search for \"MCP\" > Open Workspace MCP Config",
+                    instructionStyle
+                );
+            }
             EditorGUILayout.LabelField("    OR", instructionStyle);
             EditorGUILayout.LabelField(
                 "    b) Opening the configuration file at:",

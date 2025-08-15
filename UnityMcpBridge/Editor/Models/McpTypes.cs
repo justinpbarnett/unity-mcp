@@ -7,6 +7,7 @@ namespace UnityMcpBridge.Editor.Models
         Cursor,
         VSCode,
         Windsurf,
+        Kiro,
     }
 }
 
