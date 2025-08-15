@@ -1,6 +1,7 @@
 import socket
 import json
 import logging
+import struct
 from dataclasses import dataclass
 from pathlib import Path
 import time
@@ -23,6 +24,7 @@ class UnityConnection:
     host: str = config.unity_host
     port: int = None  # Will be set dynamically
     sock: socket.socket = None  # Socket for Unity communication
+    use_framing: bool = False  # Negotiated per-connection
     
     def __post_init__(self):
         """Set port from discovery if not explicitly provided"""
@@ -37,6 +39,19 @@ class UnityConnection:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.connect((self.host, self.port))
             logger.info(f"Connected to Unity at {self.host}:{self.port}")
+
+            # Strict handshake: require FRAMING=1
+            try:
+                self.sock.settimeout(1.0)
+                greeting = self.sock.recv(256)
+                text = greeting.decode('ascii', errors='ignore') if greeting else ''
+                if 'FRAMING=1' in text:
+                    self.use_framing = True
+                    logger.info('Unity MCP handshake received: FRAMING=1 (strict)')
+                else:
+                    raise ConnectionError(f'Unity MCP requires FRAMING=1, got: {text!r}')
+            finally:
+                self.sock.settimeout(config.connection_timeout)
             return True
         except Exception as e:
             logger.error(f"Failed to connect to Unity: {str(e)}")
@@ -53,8 +68,33 @@ class UnityConnection:
             finally:
                 self.sock = None
 
+    def _read_exact(self, sock: socket.socket, count: int) -> bytes:
+        data = bytearray()
+        while len(data) < count:
+            chunk = sock.recv(count - len(data))
+            if not chunk:
+                raise Exception("Connection closed before reading expected bytes")
+            data.extend(chunk)
+        return bytes(data)
+
     def receive_full_response(self, sock, buffer_size=config.buffer_size) -> bytes:
         """Receive a complete response from Unity, handling chunked data."""
+        if self.use_framing:
+            try:
+                header = self._read_exact(sock, 8)
+                payload_len = struct.unpack('>Q', header)[0]
+                if payload_len == 0 or payload_len > (64 * 1024 * 1024):
+                    raise Exception(f"Invalid framed length: {payload_len}")
+                payload = self._read_exact(sock, payload_len)
+                logger.info(f"Received framed response ({len(payload)} bytes)")
+                return payload
+            except socket.timeout:
+                logger.warning("Socket timeout during framed receive")
+                raise Exception("Timeout receiving Unity response")
+            except Exception as e:
+                logger.error(f"Error during framed receive: {str(e)}")
+                raise
+
         chunks = []
         sock.settimeout(config.connection_timeout)  # Use timeout from config
         try:
@@ -166,13 +206,26 @@ class UnityConnection:
                     payload = json.dumps(command, ensure_ascii=False).encode('utf-8')
 
                 # Send
-                self.sock.sendall(payload)
+                try:
+                    logger.debug(f"send {len(payload)} bytes; mode={'framed' if self.use_framing else 'legacy'}; head={(payload[:32]).decode('utf-8','ignore')}")
+                except Exception:
+                    pass
+                if self.use_framing:
+                    header = struct.pack('>Q', len(payload))
+                    self.sock.sendall(header)
+                    self.sock.sendall(payload)
+                else:
+                    self.sock.sendall(payload)
 
                 # During retry bursts use a short receive timeout
                 if attempt > 0 and last_short_timeout is None:
                     last_short_timeout = self.sock.gettimeout()
                     self.sock.settimeout(1.0)
                 response_data = self.receive_full_response(self.sock)
+                try:
+                    logger.debug(f"recv {len(response_data)} bytes; mode={'framed' if self.use_framing else 'legacy'}; head={(response_data[:32]).decode('utf-8','ignore')}")
+                except Exception:
+                    pass
                 # restore steady-state timeout if changed
                 if last_short_timeout is not None:
                     self.sock.settimeout(config.connection_timeout)
@@ -241,43 +294,22 @@ class UnityConnection:
 _unity_connection = None
 
 def get_unity_connection() -> UnityConnection:
-    """Retrieve or establish a persistent Unity connection."""
+    """Retrieve or establish a persistent Unity connection.
+
+    Note: Do NOT ping on every retrieval to avoid connection storms. Rely on
+    send_command() exceptions to detect broken sockets and reconnect there.
+    """
     global _unity_connection
     if _unity_connection is not None:
-        try:
-            # Try to ping with a short timeout to verify connection
-            result = _unity_connection.send_command("ping")
-            # If we get here, the connection is still valid
-            logger.debug("Reusing existing Unity connection")
-            return _unity_connection
-        except Exception as e:
-            logger.warning(f"Existing connection failed: {str(e)}")
-            try:
-                _unity_connection.disconnect()
-            except:
-                pass
-            _unity_connection = None
-    
-    # Create a new connection
+        return _unity_connection
+
     logger.info("Creating new Unity connection")
     _unity_connection = UnityConnection()
     if not _unity_connection.connect():
         _unity_connection = None
         raise ConnectionError("Could not connect to Unity. Ensure the Unity Editor and MCP Bridge are running.")
-    
-    try:
-        # Verify the new connection works
-        _unity_connection.send_command("ping")
-        logger.info("Successfully established new Unity connection")
-        return _unity_connection
-    except Exception as e:
-        logger.error(f"Could not verify new connection: {str(e)}")
-        try:
-            _unity_connection.disconnect()
-        except:
-            pass
-        _unity_connection = None
-        raise ConnectionError(f"Could not establish valid Unity connection: {str(e)}") 
+    logger.info("Connected to Unity on startup")
+    return _unity_connection
 
 
 # -----------------------------

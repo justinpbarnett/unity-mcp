@@ -1550,29 +1550,33 @@ namespace UnityMcpBridge.Editor.Windows
                     }
                     else
                     {
-                        // Attempt auto-rewrite once if the package path changed
-                        try
+                        // Attempt auto-rewrite once if the package path changed, but only when explicitly enabled
+                        bool autoManage = UnityEditor.EditorPrefs.GetBool("UnityMCP.AutoManageIDEConfig", false);
+                        if (autoManage)
                         {
-                            string rewriteResult = WriteToConfig(pythonDir, configPath, mcpClient);
-                            if (rewriteResult == "Configured successfully")
+                            try
                             {
-                                if (debugLogsEnabled)
+                                string rewriteResult = WriteToConfig(pythonDir, configPath, mcpClient);
+                                if (rewriteResult == "Configured successfully")
                                 {
-                                    UnityEngine.Debug.Log($"UnityMCP: Auto-updated MCP config for '{mcpClient.name}' to new path: {pythonDir}");
+                                    if (debugLogsEnabled)
+                                    {
+                                        UnityEngine.Debug.Log($"UnityMCP: Auto-updated MCP config for '{mcpClient.name}' to new path: {pythonDir}");
+                                    }
+                                    mcpClient.SetStatus(McpStatus.Configured);
                                 }
-                                mcpClient.SetStatus(McpStatus.Configured);
+                                else
+                                {
+                                    mcpClient.SetStatus(McpStatus.IncorrectPath);
+                                }
                             }
-                            else
+                            catch (Exception ex)
                             {
                                 mcpClient.SetStatus(McpStatus.IncorrectPath);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            mcpClient.SetStatus(McpStatus.IncorrectPath);
-                            if (debugLogsEnabled)
-                            {
-                                UnityEngine.Debug.LogWarning($"UnityMCP: Auto-config rewrite failed for '{mcpClient.name}': {ex.Message}");
+                                if (debugLogsEnabled)
+                                {
+                                    UnityEngine.Debug.LogWarning($"UnityMCP: Auto-config rewrite failed for '{mcpClient.name}': {ex.Message}");
+                                }
                             }
                         }
                     }

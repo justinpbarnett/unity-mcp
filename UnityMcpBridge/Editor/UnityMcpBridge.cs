@@ -395,22 +395,68 @@ namespace UnityMcpBridge.Editor
             using (client)
             using (NetworkStream stream = client.GetStream())
             {
+                const int MaxMessageBytes = 64 * 1024 * 1024; // 64 MB safety cap
+                bool framingEnabledForConnection = false;
+                try
+                {
+                    var ep = client.Client?.RemoteEndPoint?.ToString() ?? "unknown";
+                    Debug.Log($"<b><color=#2EA3FF>UNITY-MCP</color></b>: Client connected {ep}");
+                }
+                catch { }
+                // Strict framing: always require FRAMING=1 and frame all I/O
+                try
+                {
+                    client.NoDelay = true;
+                }
+                catch { }
+                try
+                {
+                    string handshake = "WELCOME UNITY-MCP 1 FRAMING=1\n";
+                    byte[] handshakeBytes = System.Text.Encoding.ASCII.GetBytes(handshake);
+                    await stream.WriteAsync(handshakeBytes, 0, handshakeBytes.Length);
+                }
+                catch { /* ignore */ }
+                framingEnabledForConnection = true;
+                Debug.Log("<b><color=#2EA3FF>UNITY-MCP</color></b>: Sent handshake FRAMING=1 (strict)");
+
                 byte[] buffer = new byte[8192];
                 while (isRunning)
                 {
                     try
                     {
-                        int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-                        if (bytesRead == 0)
+                        // Strict framed mode
+                        string commandText = null;
+                        bool usedFraming = true;
+
+                        if (true)
                         {
-                            break; // Client disconnected
+                            // Enforced framed mode for this connection
+                            byte[] header = new byte[8];
+                            int headerFilled = 0;
+                            while (headerFilled < 8)
+                            {
+                                int r = await stream.ReadAsync(header, headerFilled, 8 - headerFilled);
+                                if (r == 0)
+                                {
+                                    return; // disconnected
+                                }
+                                headerFilled += r;
+                            }
+                            ulong payloadLen = ReadUInt64BigEndian(header);
+                            if (payloadLen == 0UL || payloadLen > (ulong)MaxMessageBytes)
+                            {
+                                throw new System.IO.IOException($"Invalid framed length: {payloadLen}");
+                            }
+                            byte[] payload = await ReadExactAsync(stream, (int)payloadLen);
+                            commandText = System.Text.Encoding.UTF8.GetString(payload);
                         }
 
-                        string commandText = System.Text.Encoding.UTF8.GetString(
-                            buffer,
-                            0,
-                            bytesRead
-                        );
+                        try
+                        {
+                            var preview = commandText.Length > 120 ? commandText.Substring(0, 120) + "…" : commandText;
+                            Debug.Log($"<b><color=#2EA3FF>UNITY-MCP</color></b>: recv {(usedFraming ? "framed" : "legacy")}: {preview}");
+                        }
+                        catch { }
                         string commandId = Guid.NewGuid().ToString();
                         TaskCompletionSource<string> tcs = new();
 
@@ -422,6 +468,12 @@ namespace UnityMcpBridge.Editor
                                 /*lang=json,strict*/
                                 "{\"status\":\"success\",\"result\":{\"message\":\"pong\"}}"
                             );
+                            if (framingEnabledForConnection)
+                            {
+                                byte[] outHeader = new byte[8];
+                                WriteUInt64BigEndian(outHeader, (ulong)pingResponseBytes.Length);
+                                await stream.WriteAsync(outHeader, 0, outHeader.Length);
+                            }
                             await stream.WriteAsync(pingResponseBytes, 0, pingResponseBytes.Length);
                             continue;
                         }
@@ -433,6 +485,12 @@ namespace UnityMcpBridge.Editor
 
                         string response = await tcs.Task;
                         byte[] responseBytes = System.Text.Encoding.UTF8.GetBytes(response);
+                        if (true)
+                        {
+                            byte[] outHeader = new byte[8];
+                            WriteUInt64BigEndian(outHeader, (ulong)responseBytes.Length);
+                            await stream.WriteAsync(outHeader, 0, outHeader.Length);
+                        }
                         await stream.WriteAsync(responseBytes, 0, responseBytes.Length);
                     }
                     catch (Exception ex)
@@ -442,6 +500,51 @@ namespace UnityMcpBridge.Editor
                     }
                 }
             }
+        }
+
+        private static async System.Threading.Tasks.Task<byte[]> ReadExactAsync(NetworkStream stream, int count)
+        {
+            byte[] data = new byte[count];
+            int offset = 0;
+            while (offset < count)
+            {
+                int r = await stream.ReadAsync(data, offset, count - offset);
+                if (r == 0)
+                {
+                    throw new System.IO.IOException("Connection closed before reading expected bytes");
+                }
+                offset += r;
+            }
+            return data;
+        }
+
+        private static ulong ReadUInt64BigEndian(byte[] buffer)
+        {
+            if (buffer == null || buffer.Length < 8) return 0UL;
+            return ((ulong)buffer[0] << 56)
+                 | ((ulong)buffer[1] << 48)
+                 | ((ulong)buffer[2] << 40)
+                 | ((ulong)buffer[3] << 32)
+                 | ((ulong)buffer[4] << 24)
+                 | ((ulong)buffer[5] << 16)
+                 | ((ulong)buffer[6] << 8)
+                 | buffer[7];
+        }
+
+        private static void WriteUInt64BigEndian(byte[] dest, ulong value)
+        {
+            if (dest == null || dest.Length < 8)
+            {
+                throw new System.ArgumentException("Destination buffer too small for UInt64");
+            }
+            dest[0] = (byte)(value >> 56);
+            dest[1] = (byte)(value >> 48);
+            dest[2] = (byte)(value >> 40);
+            dest[3] = (byte)(value >> 32);
+            dest[4] = (byte)(value >> 24);
+            dest[5] = (byte)(value >> 16);
+            dest[6] = (byte)(value >> 8);
+            dest[7] = (byte)(value);
         }
 
         private static void ProcessCommands()

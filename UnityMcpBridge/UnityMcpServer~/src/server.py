@@ -1,11 +1,13 @@
 from mcp.server.fastmcp import FastMCP, Context, Image
 import logging
+from logging.handlers import RotatingFileHandler
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List
 from config import config
 from tools import register_all_tools
 from unity_connection import get_unity_connection, UnityConnection
+from pathlib import Path
 
 # Configure logging using settings from config
 logging.basicConfig(
@@ -13,6 +15,20 @@ logging.basicConfig(
     format=config.log_format
 )
 logger = logging.getLogger("unity-mcp-server")
+
+# File logging to avoid stdout interference with MCP stdio
+try:
+    log_dir = Path.home() / ".unity-mcp"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    file_handler = RotatingFileHandler(str(log_dir / "server.log"), maxBytes=5*1024*1024, backupCount=3)
+    file_handler.setFormatter(logging.Formatter(config.log_format))
+    file_handler.setLevel(getattr(logging, config.log_level))
+    logger.addHandler(file_handler)
+    # Prevent duplicate propagation to root handlers
+    logger.propagate = False
+except Exception:
+    # If file logging setup fails, continue with stderr logging only
+    pass
 
 # Global connection state
 _unity_connection: UnityConnection = None

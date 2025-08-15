@@ -6,6 +6,7 @@ using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityMcpBridge.Editor.Helpers;
+using System.Threading;
 
 #if USE_ROSLYN
 using Microsoft.CodeAnalysis;
@@ -217,13 +218,20 @@ namespace UnityMcpBridge.Editor.Tools
 
             try
             {
-                File.WriteAllText(fullPath, contents);
-                AssetDatabase.ImportAsset(relativePath);
-                AssetDatabase.Refresh(); // Ensure Unity recognizes the new script
-                return Response.Success(
+                // Atomic-ish create
+                var enc = System.Text.Encoding.UTF8;
+                var tmp = fullPath + ".tmp";
+                File.WriteAllText(tmp, contents, enc);
+                File.Move(tmp, fullPath);
+
+                var ok = Response.Success(
                     $"Script '{name}.cs' created successfully at '{relativePath}'.",
-                    new { path = relativePath }
+                    new { path = relativePath, scheduledRefresh = true }
                 );
+
+                // Schedule heavy work AFTER replying
+                ManageScriptRefreshHelpers.ScheduleScriptRefresh(relativePath);
+                return ok;
             }
             catch (Exception e)
             {
@@ -298,13 +306,33 @@ namespace UnityMcpBridge.Editor.Tools
 
             try
             {
-                File.WriteAllText(fullPath, contents);
-                AssetDatabase.ImportAsset(relativePath); // Re-import to reflect changes
-                AssetDatabase.Refresh();
-                return Response.Success(
+                // Safe write with atomic replace when available
+                var encoding = System.Text.Encoding.UTF8;
+                string tempPath = fullPath + ".tmp";
+                File.WriteAllText(tempPath, contents, encoding);
+
+                string backupPath = fullPath + ".bak";
+                try
+                {
+                    File.Replace(tempPath, fullPath, backupPath);
+                }
+                catch (PlatformNotSupportedException)
+                {
+                    // Fallback for platforms without File.Replace
+                    File.Copy(tempPath, fullPath, true);
+                    try { File.Delete(tempPath); } catch { }
+                }
+
+                // Prepare success response BEFORE any operation that can trigger a domain reload
+                var ok = Response.Success(
                     $"Script '{name}.cs' updated successfully at '{relativePath}'.",
-                    new { path = relativePath }
+                    new { path = relativePath, scheduledRefresh = true }
                 );
+
+                // Schedule a debounced import/compile on next editor tick to avoid stalling the reply
+                ManageScriptRefreshHelpers.ScheduleScriptRefresh(relativePath);
+
+                return ok;
             }
             catch (Exception e)
             {
@@ -1025,6 +1053,43 @@ namespace UnityMcpBridge.Editor.Tools
         //         return Response.Error("Script validation failed.", result);
         //     }
         // }
+    }
+}
+
+// Debounced refresh/compile scheduler to coalesce bursts of edits
+static class RefreshDebounce
+{
+    private static int _pending;
+    private static DateTime _last;
+
+    public static void Schedule(string relPath, TimeSpan window)
+    {
+        Interlocked.Exchange(ref _pending, 1);
+        var now = DateTime.UtcNow;
+        if ((now - _last) < window) return;
+        _last = now;
+
+        EditorApplication.delayCall += () =>
+        {
+            if (Interlocked.Exchange(ref _pending, 0) == 1)
+            {
+                // Prefer targeted import and script compile over full refresh
+                AssetDatabase.ImportAsset(relPath, ImportAssetOptions.ForceUpdate);
+#if UNITY_EDITOR
+                UnityEditor.Compilation.CompilationPipeline.RequestScriptCompilation();
+#endif
+                // Fallback if needed:
+                // AssetDatabase.Refresh();
+            }
+        };
+    }
+}
+
+static class ManageScriptRefreshHelpers
+{
+    public static void ScheduleScriptRefresh(string relPath)
+    {
+        RefreshDebounce.Schedule(relPath, TimeSpan.FromMilliseconds(200));
     }
 }
 
