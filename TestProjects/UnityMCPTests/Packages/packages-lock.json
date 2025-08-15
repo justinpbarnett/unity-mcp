@@ -1,7 +1,7 @@
 {
   "dependencies": {
     "com.coplaydev.unity-mcp": {
-      "version": "file:/Users/marcussanatan/Projects/unity-mcp/UnityMcpBridge",
+      "version": "file:../../../UnityMcpBridge",
       "depth": 0,
       "source": "local",
       "dependencies": {
