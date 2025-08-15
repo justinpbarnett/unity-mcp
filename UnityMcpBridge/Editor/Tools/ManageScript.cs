@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -48,6 +49,47 @@ namespace UnityMcpBridge.Editor.Tools
     /// </summary>
     public static class ManageScript
     {
+        /// <summary>
+        /// Resolves a directory under Assets/, preventing traversal and escaping.
+        /// Returns fullPathDir on disk and canonical 'Assets/...' relative path.
+        /// </summary>
+        private static bool TryResolveUnderAssets(string relDir, out string fullPathDir, out string relPathSafe)
+        {
+            string assets = Application.dataPath.Replace('\\', '/');
+            string targetDir = Path.Combine(assets, (relDir ?? "Scripts")).Replace('\\', '/');
+            string full = Path.GetFullPath(targetDir).Replace('\\', '/');
+
+            bool underAssets = full.StartsWith(assets + "/", StringComparison.OrdinalIgnoreCase)
+                               || string.Equals(full, assets, StringComparison.OrdinalIgnoreCase);
+            if (!underAssets)
+            {
+                fullPathDir = null;
+                relPathSafe = null;
+                return false;
+            }
+
+            // Best-effort symlink guard: if directory is a reparse point/symlink, reject
+            try
+            {
+                var di = new DirectoryInfo(full);
+                if (di.Exists)
+                {
+                    var attrs = di.Attributes;
+                    if ((attrs & FileAttributes.ReparsePoint) != 0)
+                    {
+                        fullPathDir = null;
+                        relPathSafe = null;
+                        return false;
+                    }
+                }
+            }
+            catch { /* best effort; proceed */ }
+
+            fullPathDir = full;
+            string tail = full.Length > assets.Length ? full.Substring(assets.Length).TrimStart('/') : string.Empty;
+            relPathSafe = ("Assets/" + tail).TrimEnd('/');
+            return true;
+        }
         /// <summary>
         /// Main handler for script management actions.
         /// </summary>
@@ -97,29 +139,16 @@ namespace UnityMcpBridge.Editor.Tools
                 );
             }
 
-            // Ensure path is relative to Assets/, removing any leading "Assets/"
-            // Set default directory to "Scripts" if path is not provided
-            string relativeDir = path ?? "Scripts"; // Default to "Scripts" if path is null
-            if (!string.IsNullOrEmpty(relativeDir))
+            // Resolve and harden target directory under Assets/
+            if (!TryResolveUnderAssets(path, out string fullPathDir, out string relPathSafeDir))
             {
-                relativeDir = relativeDir.Replace('\\', '/').Trim('/');
-                if (relativeDir.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
-                {
-                    relativeDir = relativeDir.Substring("Assets/".Length).TrimStart('/');
-                }
-            }
-            // Handle empty string case explicitly after processing
-            if (string.IsNullOrEmpty(relativeDir))
-            {
-                relativeDir = "Scripts"; // Ensure default if path was provided as "" or only "/" or "Assets/"
+                return Response.Error($"Invalid path. Target directory must be within 'Assets/'. Provided: '{(path ?? "(null)")}'");
             }
 
-            // Construct paths
+            // Construct file paths
             string scriptFileName = $"{name}.cs";
-            string fullPathDir = Path.Combine(Application.dataPath, relativeDir); // Application.dataPath ends in "Assets"
             string fullPath = Path.Combine(fullPathDir, scriptFileName);
-            string relativePath = Path.Combine("Assets", relativeDir, scriptFileName)
-                .Replace('\\', '/'); // Ensure "Assets/" prefix and forward slashes
+            string relativePath = Path.Combine(relPathSafeDir, scriptFileName).Replace('\\', '/');
 
             // Ensure the target directory exists for create/update
             if (action == "create" || action == "update")
@@ -154,6 +183,12 @@ namespace UnityMcpBridge.Editor.Tools
                     return UpdateScript(fullPath, relativePath, name, contents);
                 case "delete":
                     return DeleteScript(fullPath, relativePath);
+                case "edit":
+                {
+                    var edits = @params["edits"] as JArray;
+                    var options = @params["options"] as JObject;
+                    return EditScript(fullPath, relativePath, name, edits, options);
+                }
                 default:
                     return Response.Error(
                         $"Unknown action: '{action}'. Valid actions are: create, read, update, delete."
@@ -222,7 +257,17 @@ namespace UnityMcpBridge.Editor.Tools
                 var enc = System.Text.Encoding.UTF8;
                 var tmp = fullPath + ".tmp";
                 File.WriteAllText(tmp, contents, enc);
-                File.Move(tmp, fullPath);
+                try
+                {
+                    // Prefer atomic move within same volume
+                    File.Move(tmp, fullPath);
+                }
+                catch (IOException)
+                {
+                    // Cross-volume or other IO constraint: fallback to copy
+                    File.Copy(tmp, fullPath, overwrite: true);
+                    try { File.Delete(tmp); } catch { }
+                }
 
                 var ok = Response.Success(
                     $"Script '{name}.cs' created successfully at '{relativePath}'.",
@@ -318,7 +363,12 @@ namespace UnityMcpBridge.Editor.Tools
                 }
                 catch (PlatformNotSupportedException)
                 {
-                    // Fallback for platforms without File.Replace
+                    File.Copy(tempPath, fullPath, true);
+                    try { File.Delete(tempPath); } catch { }
+                }
+                catch (IOException)
+                {
+                    // Cross-volume moves can throw IOException; fallback to copy
                     File.Copy(tempPath, fullPath, true);
                     try { File.Delete(tempPath); } catch { }
                 }
@@ -370,6 +420,568 @@ namespace UnityMcpBridge.Editor.Tools
             {
                 return Response.Error($"Error deleting script '{relativePath}': {e.Message}");
             }
+        }
+
+        /// <summary>
+        /// Structured edits (AST-backed where available) on existing scripts.
+        /// Supports class-level replace/delete with Roslyn span computation if USE_ROSLYN is defined,
+        /// otherwise falls back to a conservative balanced-brace scan.
+        /// </summary>
+        private static object EditScript(
+            string fullPath,
+            string relativePath,
+            string name,
+            JArray edits,
+            JObject options)
+        {
+            if (!File.Exists(fullPath))
+                return Response.Error($"Script not found at '{relativePath}'.");
+            if (edits == null || edits.Count == 0)
+                return Response.Error("No edits provided.");
+
+            string original;
+            try { original = File.ReadAllText(fullPath); }
+            catch (Exception ex) { return Response.Error($"Failed to read script: {ex.Message}"); }
+
+            string working = original;
+
+            try
+            {
+                var replacements = new List<(int start, int length, string text)>();
+
+                foreach (var e in edits)
+                {
+                    var op = (JObject)e;
+                    var mode = (op.Value<string>("mode") ?? op.Value<string>("op") ?? string.Empty).ToLowerInvariant();
+
+                    switch (mode)
+                    {
+                        case "replace_class":
+                        {
+                            string className = op.Value<string>("className");
+                            string ns = op.Value<string>("namespace");
+                            string replacement = ExtractReplacement(op);
+
+                            if (string.IsNullOrWhiteSpace(className))
+                                return Response.Error("replace_class requires 'className'.");
+                            if (replacement == null)
+                                return Response.Error("replace_class requires 'replacement' (inline or base64).");
+
+                            if (!TryComputeClassSpan(working, className, ns, out var spanStart, out var spanLength, out var why))
+                                return Response.Error($"replace_class failed: {why}");
+
+                            if (!ValidateClassSnippet(replacement, className, out var vErr))
+                                return Response.Error($"Replacement snippet invalid: {vErr}");
+
+                            replacements.Add((spanStart, spanLength, NormalizeNewlines(replacement)));
+                            break;
+                        }
+
+                        case "delete_class":
+                        {
+                            string className = op.Value<string>("className");
+                            string ns = op.Value<string>("namespace");
+                            if (string.IsNullOrWhiteSpace(className))
+                                return Response.Error("delete_class requires 'className'.");
+
+                            if (!TryComputeClassSpan(working, className, ns, out var s, out var l, out var why))
+                                return Response.Error($"delete_class failed: {why}");
+
+                            replacements.Add((s, l, string.Empty));
+                            break;
+                        }
+
+                        case "replace_method":
+                        {
+                            string className = op.Value<string>("className");
+                            string ns = op.Value<string>("namespace");
+                            string methodName = op.Value<string>("methodName");
+                            string replacement = ExtractReplacement(op);
+                            string returnType = op.Value<string>("returnType");
+                            string parametersSignature = op.Value<string>("parametersSignature");
+                            string attributesContains = op.Value<string>("attributesContains");
+
+                            if (string.IsNullOrWhiteSpace(className)) return Response.Error("replace_method requires 'className'.");
+                            if (string.IsNullOrWhiteSpace(methodName)) return Response.Error("replace_method requires 'methodName'.");
+                            if (replacement == null) return Response.Error("replace_method requires 'replacement' (inline or base64).");
+
+                            if (!TryComputeClassSpan(working, className, ns, out var clsStart, out var clsLen, out var whyClass))
+                                return Response.Error($"replace_method failed to locate class: {whyClass}");
+
+                            if (!TryComputeMethodSpan(working, clsStart, clsLen, methodName, returnType, parametersSignature, attributesContains, out var mStart, out var mLen, out var whyMethod))
+                                return Response.Error($"replace_method failed: {whyMethod}");
+
+                            replacements.Add((mStart, mLen, NormalizeNewlines(replacement)));
+                            break;
+                        }
+
+                        case "delete_method":
+                        {
+                            string className = op.Value<string>("className");
+                            string ns = op.Value<string>("namespace");
+                            string methodName = op.Value<string>("methodName");
+                            string returnType = op.Value<string>("returnType");
+                            string parametersSignature = op.Value<string>("parametersSignature");
+                            string attributesContains = op.Value<string>("attributesContains");
+
+                            if (string.IsNullOrWhiteSpace(className)) return Response.Error("delete_method requires 'className'.");
+                            if (string.IsNullOrWhiteSpace(methodName)) return Response.Error("delete_method requires 'methodName'.");
+
+                            if (!TryComputeClassSpan(working, className, ns, out var clsStart, out var clsLen, out var whyClass))
+                                return Response.Error($"delete_method failed to locate class: {whyClass}");
+
+                            if (!TryComputeMethodSpan(working, clsStart, clsLen, methodName, returnType, parametersSignature, attributesContains, out var mStart, out var mLen, out var whyMethod))
+                                return Response.Error($"delete_method failed: {whyMethod}");
+
+                            replacements.Add((mStart, mLen, string.Empty));
+                            break;
+                        }
+
+                        case "insert_method":
+                        {
+                            string className = op.Value<string>("className");
+                            string ns = op.Value<string>("namespace");
+                            string position = (op.Value<string>("position") ?? "end").ToLowerInvariant();
+                            string afterMethodName = op.Value<string>("afterMethodName");
+                            string afterReturnType = op.Value<string>("afterReturnType");
+                            string afterParameters = op.Value<string>("afterParametersSignature");
+                            string afterAttributesContains = op.Value<string>("afterAttributesContains");
+                            string snippet = ExtractReplacement(op);
+
+                            if (string.IsNullOrWhiteSpace(className)) return Response.Error("insert_method requires 'className'.");
+                            if (snippet == null) return Response.Error("insert_method requires 'replacement' (inline or base64) containing a full method declaration.");
+
+                            if (!TryComputeClassSpan(working, className, ns, out var clsStart, out var clsLen, out var whyClass))
+                                return Response.Error($"insert_method failed to locate class: {whyClass}");
+
+                            if (position == "after")
+                            {
+                                if (string.IsNullOrEmpty(afterMethodName)) return Response.Error("insert_method with position='after' requires 'afterMethodName'.");
+                                if (!TryComputeMethodSpan(working, clsStart, clsLen, afterMethodName, afterReturnType, afterParameters, afterAttributesContains, out var aStart, out var aLen, out var whyAfter))
+                                    return Response.Error($"insert_method(after) failed to locate anchor method: {whyAfter}");
+                                int insAt = aStart + aLen;
+                                string text = NormalizeNewlines("\n\n" + snippet.TrimEnd() + "\n");
+                                replacements.Add((insAt, 0, text));
+                            }
+                            else if (!TryFindClassInsertionPoint(working, clsStart, clsLen, position, out var insAt, out var whyIns))
+                                return Response.Error($"insert_method failed: {whyIns}");
+                            else
+                            {
+                                string text = NormalizeNewlines("\n\n" + snippet.TrimEnd() + "\n");
+                                replacements.Add((insAt, 0, text));
+                            }
+                            break;
+                        }
+
+                        default:
+                            return Response.Error($"Unknown edit mode: '{mode}'. Allowed: replace_class, delete_class, replace_method, delete_method, insert_method.");
+                    }
+                }
+
+                if (HasOverlaps(replacements))
+                    return Response.Error("Edits overlap; split into separate calls or adjust targets.");
+
+                foreach (var r in replacements.OrderByDescending(r => r.start))
+                    working = working.Remove(r.start, r.length).Insert(r.start, r.text);
+
+                // Validate result using override from options if provided; otherwise GUI strictness
+                var level = GetValidationLevelFromGUI();
+                try
+                {
+                    var validateOpt = options?["validate"]?.ToString()?.ToLowerInvariant();
+                    if (!string.IsNullOrEmpty(validateOpt))
+                    {
+                        level = validateOpt switch
+                        {
+                            "basic" => ValidationLevel.Basic,
+                            "standard" => ValidationLevel.Standard,
+                            "comprehensive" => ValidationLevel.Comprehensive,
+                            "strict" => ValidationLevel.Strict,
+                            _ => level
+                        };
+                    }
+                }
+                catch { /* ignore option parsing issues */ }
+                if (!ValidateScriptSyntax(working, level, out var errors))
+                    return Response.Error("Script validation failed:\n" + string.Join("\n", errors ?? Array.Empty<string>()));
+                else if (errors != null && errors.Length > 0)
+                    Debug.LogWarning($"Script validation warnings for {name}:\n" + string.Join("\n", errors));
+
+                // Atomic write with backup; schedule refresh
+                var enc = System.Text.Encoding.UTF8;
+                var tmp = fullPath + ".tmp";
+                File.WriteAllText(tmp, working, enc);
+                string backup = fullPath + ".bak";
+                try { File.Replace(tmp, fullPath, backup); }
+                catch (PlatformNotSupportedException) { File.Copy(tmp, fullPath, true); try { File.Delete(tmp); } catch { } }
+                catch (IOException) { File.Copy(tmp, fullPath, true); try { File.Delete(tmp); } catch { } }
+
+                // Decide refresh behavior
+                string refreshMode = options?["refresh"]?.ToString()?.ToLowerInvariant();
+                bool immediate = refreshMode == "immediate" || refreshMode == "sync";
+
+                var ok = Response.Success(
+                    $"Applied {replacements.Count} structured edit(s) to '{relativePath}'.",
+                    new { path = relativePath, editsApplied = replacements.Count, scheduledRefresh = !immediate }
+                );
+
+                if (immediate)
+                {
+                    // Force an immediate import/compile on the main thread
+                    AssetDatabase.ImportAsset(relativePath, ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate);
+#if UNITY_EDITOR
+                    UnityEditor.Compilation.CompilationPipeline.RequestScriptCompilation();
+#endif
+                }
+                else
+                {
+                    ManageScriptRefreshHelpers.ScheduleScriptRefresh(relativePath);
+                }
+                return ok;
+            }
+            catch (Exception ex)
+            {
+                return Response.Error($"Edit failed: {ex.Message}");
+            }
+        }
+
+        private static bool HasOverlaps(IEnumerable<(int start, int length, string text)> list)
+        {
+            var arr = list.OrderBy(x => x.start).ToArray();
+            for (int i = 1; i < arr.Length; i++)
+            {
+                if (arr[i - 1].start + arr[i - 1].length > arr[i].start)
+                    return true;
+            }
+            return false;
+        }
+
+        private static string ExtractReplacement(JObject op)
+        {
+            var inline = op.Value<string>("replacement");
+            if (!string.IsNullOrEmpty(inline)) return inline;
+
+            var b64 = op.Value<string>("replacementBase64");
+            if (!string.IsNullOrEmpty(b64))
+            {
+                try { return System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(b64)); }
+                catch { return null; }
+            }
+            return null;
+        }
+
+        private static string NormalizeNewlines(string t)
+        {
+            if (string.IsNullOrEmpty(t)) return t;
+            return t.Replace("\r\n", "\n").Replace("\r", "\n");
+        }
+
+        private static bool ValidateClassSnippet(string snippet, string expectedName, out string err)
+        {
+#if USE_ROSLYN
+            try
+            {
+                var tree = CSharpSyntaxTree.ParseText(snippet);
+                var root = tree.GetRoot();
+                var classes = root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax>().ToList();
+                if (classes.Count != 1) { err = "snippet must contain exactly one class declaration"; return false; }
+                // Optional: enforce expected name
+                // if (classes[0].Identifier.ValueText != expectedName) { err = $"snippet declares '{classes[0].Identifier.ValueText}', expected '{expectedName}'"; return false; }
+                err = null; return true;
+            }
+            catch (Exception ex) { err = ex.Message; return false; }
+#else
+            if (string.IsNullOrWhiteSpace(snippet) || !snippet.Contains("class ")) { err = "no 'class' keyword found in snippet"; return false; }
+            err = null; return true;
+#endif
+        }
+
+        private static bool TryComputeClassSpan(string source, string className, string ns, out int start, out int length, out string why)
+        {
+#if USE_ROSLYN
+            try
+            {
+                var tree = CSharpSyntaxTree.ParseText(source);
+                var root = tree.GetRoot();
+                var classes = root.DescendantNodes()
+                    .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax>()
+                    .Where(c => c.Identifier.ValueText == className);
+
+                if (!string.IsNullOrEmpty(ns))
+                {
+                    classes = classes.Where(c =>
+                        (c.FirstAncestorOrSelf<Microsoft.CodeAnalysis.CSharp.Syntax.NamespaceDeclarationSyntax>()?.Name?.ToString() ?? "") == ns
+                        || (c.FirstAncestorOrSelf<Microsoft.CodeAnalysis.CSharp.Syntax.FileScopedNamespaceDeclarationSyntax>()?.Name?.ToString() ?? "") == ns);
+                }
+
+                var list = classes.ToList();
+                if (list.Count == 0) { start = length = 0; why = $"class '{className}' not found" + (ns != null ? $" in namespace '{ns}'" : ""); return false; }
+                if (list.Count > 1) { start = length = 0; why = $"class '{className}' matched {list.Count} declarations (partial/nested?). Disambiguate."; return false; }
+
+                var cls = list[0];
+                var span = cls.FullSpan; // includes attributes & leading trivia
+                start = span.Start; length = span.Length; why = null; return true;
+            }
+            catch
+            {
+                // fall back below
+            }
+#endif
+            return TryComputeClassSpanBalanced(source, className, ns, out start, out length, out why);
+        }
+
+        private static bool TryComputeClassSpanBalanced(string source, string className, string ns, out int start, out int length, out string why)
+        {
+            start = length = 0; why = null;
+            var idx = IndexOfClassToken(source, className);
+            if (idx < 0) { why = $"class '{className}' not found (balanced scan)"; return false; }
+
+            if (!string.IsNullOrEmpty(ns) && !AppearsWithinNamespaceHeader(source, idx, ns))
+            { why = $"class '{className}' not under namespace '{ns}' (balanced scan)"; return false; }
+
+            // Include modifiers/attributes on the same line: back up to the start of line
+            int lineStart = idx;
+            while (lineStart > 0 && source[lineStart - 1] != '\n' && source[lineStart - 1] != '\r') lineStart--;
+
+            int i = idx;
+            while (i < source.Length && source[i] != '{') i++;
+            if (i >= source.Length) { why = "no opening brace after class header"; return false; }
+
+            int depth = 0; bool inStr = false, inChar = false, inSL = false, inML = false, esc = false;
+            int startSpan = lineStart;
+            for (; i < source.Length; i++)
+            {
+                char c = source[i];
+                char n = i + 1 < source.Length ? source[i + 1] : '\0';
+
+                if (inSL) { if (c == '\n') inSL = false; continue; }
+                if (inML) { if (c == '*' && n == '/') { inML = false; i++; } continue; }
+                if (inStr) { if (!esc && c == '"') inStr = false; esc = (!esc && c == '\\'); continue; }
+                if (inChar) { if (!esc && c == '\'') inChar = false; esc = (!esc && c == '\\'); continue; }
+
+                if (c == '/' && n == '/') { inSL = true; i++; continue; }
+                if (c == '/' && n == '*') { inML = true; i++; continue; }
+                if (c == '"') { inStr = true; continue; }
+                if (c == '\'') { inChar = true; continue; }
+
+                if (c == '{') { depth++; }
+                else if (c == '}')
+                {
+                    depth--;
+                    if (depth == 0) { start = startSpan; length = (i - startSpan) + 1; return true; }
+                    if (depth < 0) { why = "brace underflow"; return false; }
+                }
+            }
+            why = "unterminated class block"; return false;
+        }
+
+        private static bool TryComputeMethodSpan(
+            string source,
+            int classStart,
+            int classLength,
+            string methodName,
+            string returnType,
+            string parametersSignature,
+            string attributesContains,
+            out int start,
+            out int length,
+            out string why)
+        {
+            start = length = 0; why = null;
+            int searchStart = classStart;
+            int searchEnd = Math.Min(source.Length, classStart + classLength);
+
+            // 1) Find the method header using a stricter regex (allows optional attributes above)
+            string rtPattern = string.IsNullOrEmpty(returnType) ? @"[^\s]+" : Regex.Escape(returnType).Replace("\\ ", "\\s+");
+            string namePattern = Regex.Escape(methodName);
+            string paramsPattern = string.IsNullOrEmpty(parametersSignature) ? @"[\s\S]*?" : Regex.Escape(parametersSignature);
+            string pattern =
+                @"(?m)^[\t ]*(?:\[[^\n\]]+\][\t ]*\n)*[\t ]*" +
+                @"(?:(?:public|private|protected|internal|static|virtual|override|sealed|async|extern|unsafe|new|partial|readonly|volatile|event|abstract|ref|in|out)\s+)*" +
+                rtPattern + @"[\t ]+" + namePattern + @"\s*\(" + paramsPattern + @"\)";
+
+            string slice = source.Substring(searchStart, searchEnd - searchStart);
+            var headerMatch = Regex.Match(slice, pattern, RegexOptions.Multiline);
+            if (!headerMatch.Success)
+            {
+                why = $"method '{methodName}' header not found in class"; return false;
+            }
+            int headerIndex = searchStart + headerMatch.Index;
+
+            // Optional attributes filter: look upward from headerIndex for contiguous attribute lines
+            if (!string.IsNullOrEmpty(attributesContains))
+            {
+                int attrScanStart = headerIndex;
+                while (attrScanStart > searchStart)
+                {
+                    int prevNl = source.LastIndexOf('\n', attrScanStart - 1);
+                    if (prevNl < 0 || prevNl < searchStart) break;
+                    string prevLine = source.Substring(prevNl + 1, attrScanStart - (prevNl + 1));
+                    if (prevLine.TrimStart().StartsWith("[")) { attrScanStart = prevNl; continue; }
+                    break;
+                }
+                string attrBlock = source.Substring(attrScanStart, headerIndex - attrScanStart);
+                if (attrBlock.IndexOf(attributesContains, StringComparison.Ordinal) < 0)
+                {
+                    why = $"method '{methodName}' found but attributes filter did not match"; return false;
+                }
+            }
+
+            // backtrack to the very start of header/attributes to include in span
+            int lineStart = headerIndex;
+            while (lineStart > searchStart && source[lineStart - 1] != '\n' && source[lineStart - 1] != '\r') lineStart--;
+            // If previous lines are attributes, include them
+            int attrStart = lineStart;
+            int probe = lineStart - 1;
+            while (probe > searchStart)
+            {
+                int prevNl = source.LastIndexOf('\n', probe);
+                if (prevNl < 0 || prevNl < searchStart) break;
+                string prev = source.Substring(prevNl + 1, attrStart - (prevNl + 1));
+                if (prev.TrimStart().StartsWith("[")) { attrStart = prevNl + 1; probe = prevNl - 1; }
+                else break;
+            }
+
+            // 2) Walk from the end of signature to detect body style ('{' or '=> ...;') and compute end
+            int i = headerIndex;
+            int parenDepth = 0; bool inStr = false, inChar = false, inSL = false, inML = false, esc = false;
+            for (; i < searchEnd; i++)
+            {
+                char c = source[i];
+                char n = i + 1 < searchEnd ? source[i + 1] : '\0';
+                if (inSL) { if (c == '\n') inSL = false; continue; }
+                if (inML) { if (c == '*' && n == '/') { inML = false; i++; } continue; }
+                if (inStr) { if (!esc && c == '"') inStr = false; esc = (!esc && c == '\\'); continue; }
+                if (inChar) { if (!esc && c == '\'') inChar = false; esc = (!esc && c == '\\'); continue; }
+
+                if (c == '/' && n == '/') { inSL = true; i++; continue; }
+                if (c == '/' && n == '*') { inML = true; i++; continue; }
+                if (c == '"') { inStr = true; continue; }
+                if (c == '\'') { inChar = true; continue; }
+
+                if (c == '(') parenDepth++;
+                if (c == ')') { parenDepth--; if (parenDepth == 0) { i++; break; } }
+            }
+
+            // After params: detect expression-bodied or block-bodied
+            // Skip whitespace/comments
+            for (; i < searchEnd; i++)
+            {
+                char c = source[i];
+                char n = i + 1 < searchEnd ? source[i + 1] : '\0';
+                if (char.IsWhiteSpace(c)) continue;
+                if (c == '/' && n == '/') { while (i < searchEnd && source[i] != '\n') i++; continue; }
+                if (c == '/' && n == '*') { i += 2; while (i + 1 < searchEnd && !(source[i] == '*' && source[i + 1] == '/')) i++; i++; continue; }
+                break;
+            }
+
+            if (i < searchEnd - 1 && source[i] == '=' && source[i + 1] == '>')
+            {
+                // expression-bodied method: seek to terminating semicolon
+                int j = i;
+                bool done = false;
+                while (j < searchEnd)
+                {
+                    char c = source[j];
+                    if (c == ';') { done = true; break; }
+                    j++;
+                }
+                if (!done) { why = "unterminated expression-bodied method"; return false; }
+                start = attrStart; length = (j - attrStart) + 1; return true;
+            }
+
+            if (i >= searchEnd || source[i] != '{') { why = "no opening brace after method signature"; return false; }
+
+            int depth = 0; inStr = false; inChar = false; inSL = false; inML = false; esc = false;
+            int startSpan = attrStart;
+            for (; i < searchEnd; i++)
+            {
+                char c = source[i];
+                char n = i + 1 < searchEnd ? source[i + 1] : '\0';
+                if (inSL) { if (c == '\n') inSL = false; continue; }
+                if (inML) { if (c == '*' && n == '/') { inML = false; i++; } continue; }
+                if (inStr) { if (!esc && c == '"') inStr = false; esc = (!esc && c == '\\'); continue; }
+                if (inChar) { if (!esc && c == '\'') inChar = false; esc = (!esc && c == '\\'); continue; }
+
+                if (c == '/' && n == '/') { inSL = true; i++; continue; }
+                if (c == '/' && n == '*') { inML = true; i++; continue; }
+                if (c == '"') { inStr = true; continue; }
+                if (c == '\'') { inChar = true; continue; }
+
+                if (c == '{') depth++;
+                else if (c == '}')
+                {
+                    depth--;
+                    if (depth == 0) { start = startSpan; length = (i - startSpan) + 1; return true; }
+                    if (depth < 0) { why = "brace underflow in method"; return false; }
+                }
+            }
+            why = "unterminated method block"; return false;
+        }
+
+        private static int IndexOfTokenWithin(string s, string token, int start, int end)
+        {
+            int idx = s.IndexOf(token, start, StringComparison.Ordinal);
+            return (idx >= 0 && idx < end) ? idx : -1;
+        }
+
+        private static bool TryFindClassInsertionPoint(string source, int classStart, int classLength, string position, out int insertAt, out string why)
+        {
+            insertAt = 0; why = null;
+            int searchStart = classStart;
+            int searchEnd = Math.Min(source.Length, classStart + classLength);
+
+            if (position == "start")
+            {
+                // find first '{' after class header, insert just after with a newline
+                int i = IndexOfTokenWithin(source, "{", searchStart, searchEnd);
+                if (i < 0) { why = "could not find class opening brace"; return false; }
+                insertAt = i + 1; return true;
+            }
+            else // end
+            {
+                // walk to matching closing brace of class and insert just before it
+                int i = IndexOfTokenWithin(source, "{", searchStart, searchEnd);
+                if (i < 0) { why = "could not find class opening brace"; return false; }
+                int depth = 0; bool inStr = false, inChar = false, inSL = false, inML = false, esc = false;
+                for (; i < searchEnd; i++)
+                {
+                    char c = source[i];
+                    char n = i + 1 < searchEnd ? source[i + 1] : '\0';
+                    if (inSL) { if (c == '\n') inSL = false; continue; }
+                    if (inML) { if (c == '*' && n == '/') { inML = false; i++; } continue; }
+                    if (inStr) { if (!esc && c == '"') inStr = false; esc = (!esc && c == '\\'); continue; }
+                    if (inChar) { if (!esc && c == '\'') inChar = false; esc = (!esc && c == '\\'); continue; }
+
+                    if (c == '/' && n == '/') { inSL = true; i++; continue; }
+                    if (c == '/' && n == '*') { inML = true; i++; continue; }
+                    if (c == '"') { inStr = true; continue; }
+                    if (c == '\'') { inChar = true; continue; }
+
+                    if (c == '{') depth++;
+                    else if (c == '}')
+                    {
+                        depth--;
+                        if (depth == 0) { insertAt = i; return true; }
+                        if (depth < 0) { why = "brace underflow while scanning class"; return false; }
+                    }
+                }
+                why = "could not find class closing brace"; return false;
+            }
+        }
+
+        private static int IndexOfClassToken(string s, string className)
+        {
+            // simple token search; could be tightened with Regex for word boundaries
+            var pattern = "class " + className;
+            return s.IndexOf(pattern, StringComparison.Ordinal);
+        }
+
+        private static bool AppearsWithinNamespaceHeader(string s, int pos, string ns)
+        {
+            int from = Math.Max(0, pos - 2000);
+            var slice = s.Substring(from, pos - from);
+            return slice.Contains("namespace " + ns);
         }
 
         /// <summary>
