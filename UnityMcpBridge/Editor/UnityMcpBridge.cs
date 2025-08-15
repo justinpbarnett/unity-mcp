@@ -35,6 +35,8 @@ namespace UnityMcpBridge.Editor
         > commandQueue = new();
         private static int currentUnityPort = 6400; // Dynamic port, starts with default
         private static bool isAutoConnectMode = false;
+        private const ulong MaxFrameBytes = 64UL * 1024 * 1024; // 64 MiB hard cap for framed payloads
+        private const int FrameIOTimeoutMs = 30000; // Per-read timeout to avoid stalled clients
         
         // Debug helpers
         private static bool IsDebugEnabled()
@@ -395,8 +397,7 @@ namespace UnityMcpBridge.Editor
             using (client)
             using (NetworkStream stream = client.GetStream())
             {
-                const int MaxMessageBytes = 64 * 1024 * 1024; // 64 MB safety cap
-                bool framingEnabledForConnection = false;
+                // Framed I/O only; legacy mode removed
                 try
                 {
                     var ep = client.Client?.RemoteEndPoint?.ToString() ?? "unknown";
@@ -416,7 +417,6 @@ namespace UnityMcpBridge.Editor
                     await stream.WriteAsync(handshakeBytes, 0, handshakeBytes.Length);
                 }
                 catch { /* ignore */ }
-                framingEnabledForConnection = true;
                 Debug.Log("<b><color=#2EA3FF>UNITY-MCP</color></b>: Sent handshake FRAMING=1 (strict)");
 
                 byte[] buffer = new byte[8192];
@@ -431,23 +431,14 @@ namespace UnityMcpBridge.Editor
                         if (true)
                         {
                             // Enforced framed mode for this connection
-                            byte[] header = new byte[8];
-                            int headerFilled = 0;
-                            while (headerFilled < 8)
-                            {
-                                int r = await stream.ReadAsync(header, headerFilled, 8 - headerFilled);
-                                if (r == 0)
-                                {
-                                    return; // disconnected
-                                }
-                                headerFilled += r;
-                            }
+                            byte[] header = await ReadExactAsync(stream, 8, FrameIOTimeoutMs);
                             ulong payloadLen = ReadUInt64BigEndian(header);
-                            if (payloadLen == 0UL || payloadLen > (ulong)MaxMessageBytes)
+                            if (payloadLen == 0UL || payloadLen > MaxFrameBytes)
                             {
                                 throw new System.IO.IOException($"Invalid framed length: {payloadLen}");
                             }
-                            byte[] payload = await ReadExactAsync(stream, (int)payloadLen);
+                            int payloadLenInt = checked((int)payloadLen);
+                            byte[] payload = await ReadExactAsync(stream, payloadLenInt, FrameIOTimeoutMs);
                             commandText = System.Text.Encoding.UTF8.GetString(payload);
                         }
 
@@ -468,7 +459,10 @@ namespace UnityMcpBridge.Editor
                                 /*lang=json,strict*/
                                 "{\"status\":\"success\",\"result\":{\"message\":\"pong\"}}"
                             );
-                            if (framingEnabledForConnection)
+                            if ((ulong)pingResponseBytes.Length > MaxFrameBytes)
+                            {
+                                throw new System.IO.IOException($"Frame too large: {pingResponseBytes.Length}");
+                            }
                             {
                                 byte[] outHeader = new byte[8];
                                 WriteUInt64BigEndian(outHeader, (ulong)pingResponseBytes.Length);
@@ -485,7 +479,10 @@ namespace UnityMcpBridge.Editor
 
                         string response = await tcs.Task;
                         byte[] responseBytes = System.Text.Encoding.UTF8.GetBytes(response);
-                        if (true)
+                        if ((ulong)responseBytes.Length > MaxFrameBytes)
+                        {
+                            throw new System.IO.IOException($"Frame too large: {responseBytes.Length}");
+                        }
                         {
                             byte[] outHeader = new byte[8];
                             WriteUInt64BigEndian(outHeader, (ulong)responseBytes.Length);
@@ -509,6 +506,29 @@ namespace UnityMcpBridge.Editor
             while (offset < count)
             {
                 int r = await stream.ReadAsync(data, offset, count - offset);
+                if (r == 0)
+                {
+                    throw new System.IO.IOException("Connection closed before reading expected bytes");
+                }
+                offset += r;
+            }
+            return data;
+        }
+
+        // Timeout-aware exact read helper; avoids indefinite stalls
+        private static async System.Threading.Tasks.Task<byte[]> ReadExactAsync(NetworkStream stream, int count, int timeoutMs)
+        {
+            byte[] data = new byte[count];
+            int offset = 0;
+            while (offset < count)
+            {
+                var readTask = stream.ReadAsync(data, offset, count - offset);
+                var completed = await System.Threading.Tasks.Task.WhenAny(readTask, System.Threading.Tasks.Task.Delay(timeoutMs));
+                if (completed != readTask)
+                {
+                    throw new System.IO.IOException("Read timed out");
+                }
+                int r = readTask.Result;
                 if (r == 0)
                 {
                     throw new System.IO.IOException("Connection closed before reading expected bytes");
