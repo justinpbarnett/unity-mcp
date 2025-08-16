@@ -19,8 +19,10 @@ def register_manage_script_tools(mcp: FastMCP):
         script_type: str,
         namespace: str
     ) -> Dict[str, Any]:
-        """Manages C# scripts in Unity (create, read, update, delete).
-        Make reference variables public for easier access in the Unity Editor.
+        """Manage C# scripts in Unity.
+
+        IMPORTANT:
+        - This router is minimized. Use resources/read for file content and 'script_apply_edits' for changes.
 
         Args:
             action: Operation ('create', 'read', 'update', 'delete').
@@ -34,6 +36,10 @@ def register_manage_script_tools(mcp: FastMCP):
             Dictionary with results ('success', 'message', 'data').
         """
         try:
+            # Deprecate full-file update path entirely
+            if action == 'update':
+                return {"success": False, "message": "Deprecated: use script_apply_edits (line/col edits) or resources/read + small edits."}
+
             # Prepare parameters for Unity
             params = {
                 "action": action,

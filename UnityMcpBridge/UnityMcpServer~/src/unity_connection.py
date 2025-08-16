@@ -38,7 +38,7 @@ class UnityConnection:
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.connect((self.host, self.port))
-            logger.info(f"Connected to Unity at {self.host}:{self.port}")
+            logger.debug(f"Connected to Unity at {self.host}:{self.port}")
 
             # Strict handshake: require FRAMING=1
             try:
@@ -47,7 +47,7 @@ class UnityConnection:
                 text = greeting.decode('ascii', errors='ignore') if greeting else ''
                 if 'FRAMING=1' in text:
                     self.use_framing = True
-                    logger.info('Unity MCP handshake received: FRAMING=1 (strict)')
+                    logger.debug('Unity MCP handshake received: FRAMING=1 (strict)')
                 else:
                     raise ConnectionError(f'Unity MCP requires FRAMING=1, got: {text!r}')
             finally:
@@ -188,15 +188,10 @@ class UnityConnection:
 
         for attempt in range(attempts + 1):
             try:
-                # Ensure connected
+                # Ensure connected (perform handshake each time so framing stays correct)
                 if not self.sock:
-                    # During retries use short connect timeout
-                    self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    self.sock.settimeout(1.0)
-                    self.sock.connect((self.host, self.port))
-                    # restore steady-state timeout for receive
-                    self.sock.settimeout(config.connection_timeout)
-                    logger.info(f"Connected to Unity at {self.host}:{self.port}")
+                    if not self.connect():
+                        raise Exception("Could not connect to Unity")
 
                 # Build payload
                 if command_type == 'ping':

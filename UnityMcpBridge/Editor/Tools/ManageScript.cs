@@ -56,7 +56,14 @@ namespace UnityMcpBridge.Editor.Tools
         private static bool TryResolveUnderAssets(string relDir, out string fullPathDir, out string relPathSafe)
         {
             string assets = Application.dataPath.Replace('\\', '/');
-            string targetDir = Path.Combine(assets, (relDir ?? "Scripts")).Replace('\\', '/');
+
+            // Normalize caller path: allow both "Scripts/..." and "Assets/Scripts/..."
+            string rel = (relDir ?? "Scripts").Replace('\\', '/').Trim();
+            if (string.IsNullOrEmpty(rel)) rel = "Scripts";
+            if (rel.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)) rel = rel.Substring(7);
+            rel = rel.TrimStart('/');
+
+            string targetDir = Path.Combine(assets, rel).Replace('\\', '/');
             string full = Path.GetFullPath(targetDir).Replace('\\', '/');
 
             bool underAssets = full.StartsWith(assets + "/", StringComparison.OrdinalIgnoreCase)
@@ -178,17 +185,40 @@ namespace UnityMcpBridge.Editor.Tools
                         namespaceName
                     );
                 case "read":
-                    return ReadScript(fullPath, relativePath);
+                    return Response.Error("Deprecated: reads are resources now. Use resources/read with a unity://path or unity://script URI.");
                 case "update":
-                    return UpdateScript(fullPath, relativePath, name, contents);
+                    return Response.Error("Deprecated: use apply_text_edits (small, line/col edits) rather than whole-file replace.");
                 case "delete":
                     return DeleteScript(fullPath, relativePath);
-                case "edit":
+                case "apply_text_edits":
                 {
                     var edits = @params["edits"] as JArray;
-                    var options = @params["options"] as JObject;
-                    return EditScript(fullPath, relativePath, name, edits, options);
+                    string precondition = @params["precondition_sha256"]?.ToString(); // optional, currently ignored here
+                    return ApplyTextEdits(fullPath, relativePath, name, edits);
                 }
+                case "validate":
+                {
+                    string level = @params["level"]?.ToString()?.ToLowerInvariant() ?? "standard";
+                    var chosen = level switch
+                    {
+                        "basic" => ValidationLevel.Basic,
+                        "strict" => ValidationLevel.Strict,
+                        _ => ValidationLevel.Standard
+                    };
+                    string fileText;
+                    try { fileText = File.ReadAllText(fullPath); }
+                    catch (Exception ex) { return Response.Error($"Failed to read script: {ex.Message}"); }
+
+                    bool ok = ValidateScriptSyntax(fileText, chosen, out string[] diags);
+                    var result = new
+                    {
+                        isValid = ok,
+                        diagnostics = diags ?? Array.Empty<string>()
+                    };
+                    return ok ? Response.Success("Validation completed.", result) : Response.Error("Validation failed.", result);
+                }
+                case "edit":
+                    return Response.Error("Deprecated: use apply_text_edits. Structured 'edit' mode has been retired in favor of simple text edits.");
                 default:
                     return Response.Error(
                         $"Unknown action: '{action}'. Valid actions are: create, read, update, delete."
@@ -390,6 +420,108 @@ namespace UnityMcpBridge.Editor.Tools
             }
         }
 
+        /// <summary>
+        /// Apply simple text edits specified by line/column ranges. Applies transactionally and validates result.
+        /// </summary>
+        private static object ApplyTextEdits(
+            string fullPath,
+            string relativePath,
+            string name,
+            JArray edits)
+        {
+            if (!File.Exists(fullPath))
+                return Response.Error($"Script not found at '{relativePath}'.");
+            if (edits == null || edits.Count == 0)
+                return Response.Error("No edits provided.");
+
+            string original;
+            try { original = File.ReadAllText(fullPath); }
+            catch (Exception ex) { return Response.Error($"Failed to read script: {ex.Message}"); }
+
+            // Convert edits to absolute index ranges
+            var spans = new List<(int start, int end, string text)>();
+            foreach (var e in edits)
+            {
+                try
+                {
+                    int sl = Math.Max(1, e.Value<int>("startLine"));
+                    int sc = Math.Max(1, e.Value<int>("startCol"));
+                    int el = Math.Max(1, e.Value<int>("endLine"));
+                    int ec = Math.Max(1, e.Value<int>("endCol"));
+                    string newText = e.Value<string>("newText") ?? string.Empty;
+
+                    if (!TryIndexFromLineCol(original, sl, sc, out int sidx))
+                        return Response.Error($"apply_text_edits: start out of range (line {sl}, col {sc})");
+                    if (!TryIndexFromLineCol(original, el, ec, out int eidx))
+                        return Response.Error($"apply_text_edits: end out of range (line {el}, col {ec})");
+                    if (eidx < sidx) (sidx, eidx) = (eidx, sidx);
+
+                    spans.Add((sidx, eidx, newText));
+                }
+                catch (Exception ex)
+                {
+                    return Response.Error($"Invalid edit payload: {ex.Message}");
+                }
+            }
+
+            // Ensure non-overlap and apply from back to front
+            spans = spans.OrderByDescending(t => t.start).ToList();
+            for (int i = 1; i < spans.Count; i++)
+            {
+                if (spans[i].end > spans[i - 1].start)
+                    return Response.Error("Edits overlap; split into separate calls or adjust ranges.");
+            }
+
+            string working = original;
+            foreach (var sp in spans)
+            {
+                working = working.Remove(sp.start, sp.end - sp.start).Insert(sp.start, sp.text ?? string.Empty);
+            }
+
+            // Validate result
+            var level = GetValidationLevelFromGUI();
+            if (!ValidateScriptSyntax(working, level, out var errors))
+                return Response.Error("Script validation failed:\n" + string.Join("\n", errors ?? Array.Empty<string>()));
+
+            // Atomic write and schedule refresh
+            try
+            {
+                var enc = System.Text.Encoding.UTF8;
+                var tmp = fullPath + ".tmp";
+                File.WriteAllText(tmp, working, enc);
+                string backup = fullPath + ".bak";
+                try { File.Replace(tmp, fullPath, backup); }
+                catch (PlatformNotSupportedException) { File.Copy(tmp, fullPath, true); try { File.Delete(tmp); } catch { } }
+                catch (IOException) { File.Copy(tmp, fullPath, true); try { File.Delete(tmp); } catch { } }
+
+                ManageScriptRefreshHelpers.ScheduleScriptRefresh(relativePath);
+                return Response.Success($"Applied {spans.Count} text edit(s) to '{relativePath}'.", new { path = relativePath, editsApplied = spans.Count, scheduledRefresh = true });
+            }
+            catch (Exception ex)
+            {
+                return Response.Error($"Failed to write edits: {ex.Message}");
+            }
+        }
+
+        private static bool TryIndexFromLineCol(string text, int line1, int col1, out int index)
+        {
+            // 1-based line/col to absolute index (0-based), col positions are counted in code points
+            int line = 1, col = 1;
+            for (int i = 0; i <= text.Length; i++)
+            {
+                if (line == line1 && col == col1)
+                {
+                    index = i;
+                    return true;
+                }
+                if (i == text.Length) break;
+                char c = text[i];
+                if (c == '\n') { line++; col = 1; }
+                else { col++; }
+            }
+            index = -1; return false;
+        }
+
         private static object DeleteScript(string fullPath, string relativePath)
         {
             if (!File.Exists(fullPath))
@@ -448,6 +580,12 @@ namespace UnityMcpBridge.Editor.Tools
             try
             {
                 var replacements = new List<(int start, int length, string text)>();
+                int appliedCount = 0;
+
+                // Apply mode: atomic (default) computes all spans against original and applies together.
+                // Sequential applies each edit immediately to the current working text (useful for dependent edits).
+                string applyMode = options?["applyMode"]?.ToString()?.ToLowerInvariant();
+                bool applySequentially = applyMode == "sequential";
 
                 foreach (var e in edits)
                 {
@@ -473,7 +611,15 @@ namespace UnityMcpBridge.Editor.Tools
                             if (!ValidateClassSnippet(replacement, className, out var vErr))
                                 return Response.Error($"Replacement snippet invalid: {vErr}");
 
-                            replacements.Add((spanStart, spanLength, NormalizeNewlines(replacement)));
+                            if (applySequentially)
+                            {
+                                working = working.Remove(spanStart, spanLength).Insert(spanStart, NormalizeNewlines(replacement));
+                                appliedCount++;
+                            }
+                            else
+                            {
+                                replacements.Add((spanStart, spanLength, NormalizeNewlines(replacement)));
+                            }
                             break;
                         }
 
@@ -487,7 +633,15 @@ namespace UnityMcpBridge.Editor.Tools
                             if (!TryComputeClassSpan(working, className, ns, out var s, out var l, out var why))
                                 return Response.Error($"delete_class failed: {why}");
 
-                            replacements.Add((s, l, string.Empty));
+                            if (applySequentially)
+                            {
+                                working = working.Remove(s, l);
+                                appliedCount++;
+                            }
+                            else
+                            {
+                                replacements.Add((s, l, string.Empty));
+                            }
                             break;
                         }
 
@@ -509,9 +663,24 @@ namespace UnityMcpBridge.Editor.Tools
                                 return Response.Error($"replace_method failed to locate class: {whyClass}");
 
                             if (!TryComputeMethodSpan(working, clsStart, clsLen, methodName, returnType, parametersSignature, attributesContains, out var mStart, out var mLen, out var whyMethod))
-                                return Response.Error($"replace_method failed: {whyMethod}");
+                            {
+                                bool hasDependentInsert = edits.Any(j => j is JObject jo &&
+                                    string.Equals(jo.Value<string>("className"), className, StringComparison.Ordinal) &&
+                                    string.Equals(jo.Value<string>("methodName"), methodName, StringComparison.Ordinal) &&
+                                    ((jo.Value<string>("mode") ?? jo.Value<string>("op") ?? string.Empty).ToLowerInvariant() == "insert_method"));
+                                string hint = hasDependentInsert && !applySequentially ? " Hint: This batch inserts this method. Use options.applyMode='sequential' or split into separate calls." : string.Empty;
+                                return Response.Error($"replace_method failed: {whyMethod}.{hint}");
+                            }
 
-                            replacements.Add((mStart, mLen, NormalizeNewlines(replacement)));
+                            if (applySequentially)
+                            {
+                                working = working.Remove(mStart, mLen).Insert(mStart, NormalizeNewlines(replacement));
+                                appliedCount++;
+                            }
+                            else
+                            {
+                                replacements.Add((mStart, mLen, NormalizeNewlines(replacement)));
+                            }
                             break;
                         }
 
@@ -531,9 +700,24 @@ namespace UnityMcpBridge.Editor.Tools
                                 return Response.Error($"delete_method failed to locate class: {whyClass}");
 
                             if (!TryComputeMethodSpan(working, clsStart, clsLen, methodName, returnType, parametersSignature, attributesContains, out var mStart, out var mLen, out var whyMethod))
-                                return Response.Error($"delete_method failed: {whyMethod}");
+                            {
+                                bool hasDependentInsert = edits.Any(j => j is JObject jo &&
+                                    string.Equals(jo.Value<string>("className"), className, StringComparison.Ordinal) &&
+                                    string.Equals(jo.Value<string>("methodName"), methodName, StringComparison.Ordinal) &&
+                                    ((jo.Value<string>("mode") ?? jo.Value<string>("op") ?? string.Empty).ToLowerInvariant() == "insert_method"));
+                                string hint = hasDependentInsert && !applySequentially ? " Hint: This batch inserts this method. Use options.applyMode='sequential' or split into separate calls." : string.Empty;
+                                return Response.Error($"delete_method failed: {whyMethod}.{hint}");
+                            }
 
-                            replacements.Add((mStart, mLen, string.Empty));
+                            if (applySequentially)
+                            {
+                                working = working.Remove(mStart, mLen);
+                                appliedCount++;
+                            }
+                            else
+                            {
+                                replacements.Add((mStart, mLen, string.Empty));
+                            }
                             break;
                         }
 
@@ -561,14 +745,30 @@ namespace UnityMcpBridge.Editor.Tools
                                     return Response.Error($"insert_method(after) failed to locate anchor method: {whyAfter}");
                                 int insAt = aStart + aLen;
                                 string text = NormalizeNewlines("\n\n" + snippet.TrimEnd() + "\n");
-                                replacements.Add((insAt, 0, text));
+                                if (applySequentially)
+                                {
+                                    working = working.Insert(insAt, text);
+                                    appliedCount++;
+                                }
+                                else
+                                {
+                                    replacements.Add((insAt, 0, text));
+                                }
                             }
                             else if (!TryFindClassInsertionPoint(working, clsStart, clsLen, position, out var insAt, out var whyIns))
                                 return Response.Error($"insert_method failed: {whyIns}");
                             else
                             {
                                 string text = NormalizeNewlines("\n\n" + snippet.TrimEnd() + "\n");
-                                replacements.Add((insAt, 0, text));
+                                if (applySequentially)
+                                {
+                                    working = working.Insert(insAt, text);
+                                    appliedCount++;
+                                }
+                                else
+                                {
+                                    replacements.Add((insAt, 0, text));
+                                }
                             }
                             break;
                         }
@@ -578,11 +778,15 @@ namespace UnityMcpBridge.Editor.Tools
                     }
                 }
 
-                if (HasOverlaps(replacements))
-                    return Response.Error("Edits overlap; split into separate calls or adjust targets.");
+                if (!applySequentially)
+                {
+                    if (HasOverlaps(replacements))
+                        return Response.Error("Edits overlap; split into separate calls or adjust targets.");
 
-                foreach (var r in replacements.OrderByDescending(r => r.start))
-                    working = working.Remove(r.start, r.length).Insert(r.start, r.text);
+                    foreach (var r in replacements.OrderByDescending(r => r.start))
+                        working = working.Remove(r.start, r.length).Insert(r.start, r.text);
+                    appliedCount = replacements.Count;
+                }
 
                 // Validate result using override from options if provided; otherwise GUI strictness
                 var level = GetValidationLevelFromGUI();
@@ -621,8 +825,8 @@ namespace UnityMcpBridge.Editor.Tools
                 bool immediate = refreshMode == "immediate" || refreshMode == "sync";
 
                 var ok = Response.Success(
-                    $"Applied {replacements.Count} structured edit(s) to '{relativePath}'.",
-                    new { path = relativePath, editsApplied = replacements.Count, scheduledRefresh = !immediate }
+                    $"Applied {appliedCount} structured edit(s) to '{relativePath}'.",
+                    new { path = relativePath, editsApplied = appliedCount, scheduledRefresh = !immediate }
                 );
 
                 if (immediate)
@@ -796,9 +1000,9 @@ namespace UnityMcpBridge.Editor.Tools
             string namePattern = Regex.Escape(methodName);
             string paramsPattern = string.IsNullOrEmpty(parametersSignature) ? @"[\s\S]*?" : Regex.Escape(parametersSignature);
             string pattern =
-                @"(?m)^[\t ]*(?:\[[^\n\]]+\][\t ]*\n)*[\t ]*" +
+                @"(?m)^[\t ]*(?:\[[^\]]+\][\t ]*)*[\t ]*" +
                 @"(?:(?:public|private|protected|internal|static|virtual|override|sealed|async|extern|unsafe|new|partial|readonly|volatile|event|abstract|ref|in|out)\s+)*" +
-                rtPattern + @"[\t ]+" + namePattern + @"\s*\(" + paramsPattern + @"\)";
+                rtPattern + @"[\t ]+" + namePattern + @"\s*(?:<[^>]+>)?\s*\(" + paramsPattern + @"\)";
 
             string slice = source.Substring(searchStart, searchEnd - searchStart);
             var headerMatch = Regex.Match(slice, pattern, RegexOptions.Multiline);
@@ -843,7 +1047,13 @@ namespace UnityMcpBridge.Editor.Tools
             }
 
             // 2) Walk from the end of signature to detect body style ('{' or '=> ...;') and compute end
-            int i = headerIndex;
+            // Find the '(' that belongs to the method signature, not attributes
+            int nameTokenIdx = IndexOfTokenWithin(source, methodName, headerIndex, searchEnd);
+            if (nameTokenIdx < 0) { why = $"method '{methodName}' token not found after header"; return false; }
+            int sigOpenParen = IndexOfTokenWithin(source, "(", nameTokenIdx, searchEnd);
+            if (sigOpenParen < 0) { why = "method parameter list '(' not found"; return false; }
+
+            int i = sigOpenParen;
             int parenDepth = 0; bool inStr = false, inChar = false, inSL = false, inML = false, esc = false;
             for (; i < searchEnd; i++)
             {
@@ -875,6 +1085,58 @@ namespace UnityMcpBridge.Editor.Tools
                 break;
             }
 
+            // Tolerate generic constraints between params and body: multiple 'where T : ...'
+            for (;;)
+            {
+                // Skip whitespace/comments before checking for 'where'
+                for (; i < searchEnd; i++)
+                {
+                    char c = source[i];
+                    char n = i + 1 < searchEnd ? source[i + 1] : '\0';
+                    if (char.IsWhiteSpace(c)) continue;
+                    if (c == '/' && n == '/') { while (i < searchEnd && source[i] != '\n') i++; continue; }
+                    if (c == '/' && n == '*') { i += 2; while (i + 1 < searchEnd && !(source[i] == '*' && source[i + 1] == '/')) i++; i++; continue; }
+                    break;
+                }
+
+                // Check word-boundary 'where'
+                bool hasWhere = false;
+                if (i + 5 <= searchEnd)
+                {
+                    hasWhere = source[i] == 'w' && source[i + 1] == 'h' && source[i + 2] == 'e' && source[i + 3] == 'r' && source[i + 4] == 'e';
+                    if (hasWhere)
+                    {
+                        // Left boundary
+                        if (i - 1 >= 0)
+                        {
+                            char lb = source[i - 1];
+                            if (char.IsLetterOrDigit(lb) || lb == '_') hasWhere = false;
+                        }
+                        // Right boundary
+                        if (hasWhere && i + 5 < searchEnd)
+                        {
+                            char rb = source[i + 5];
+                            if (char.IsLetterOrDigit(rb) || rb == '_') hasWhere = false;
+                        }
+                    }
+                }
+                if (!hasWhere) break;
+
+                // Advance past the entire where-constraint clause until we hit '{' or '=>' or ';'
+                i += 5; // past 'where'
+                while (i < searchEnd)
+                {
+                    char c = source[i];
+                    char n = i + 1 < searchEnd ? source[i + 1] : '\0';
+                    if (c == '{' || c == ';' || (c == '=' && n == '>')) break;
+                    // Skip comments inline
+                    if (c == '/' && n == '/') { while (i < searchEnd && source[i] != '\n') i++; continue; }
+                    if (c == '/' && n == '*') { i += 2; while (i + 1 < searchEnd && !(source[i] == '*' && source[i + 1] == '/')) i++; i++; continue; }
+                    i++;
+                }
+            }
+
+            // Re-check for expression-bodied after constraints
             if (i < searchEnd - 1 && source[i] == '=' && source[i + 1] == '>')
             {
                 // expression-bodied method: seek to terminating semicolon
