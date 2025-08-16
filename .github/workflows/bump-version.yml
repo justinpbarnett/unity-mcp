@@ -1,0 +1,107 @@
+name: Bump Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: "Version bump type"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+        required: true
+    
+jobs:
+  bump:
+    name: "Bump version and tag"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute new version
+        id: compute
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUMP="${{ inputs.version_bump }}"
+          CURRENT_VERSION=$(jq -r '.version' "UnityMcpBridge/package.json")
+          echo "Current version: $CURRENT_VERSION"
+
+          IFS='.' read -r MA MI PA <<< "$CURRENT_VERSION"
+          case "$BUMP" in
+            major)
+              ((MA+=1)); MI=0; PA=0
+              ;;
+            minor)
+              ((MI+=1)); PA=0
+              ;;
+            patch)
+              ((PA+=1))
+              ;;
+            *)
+              echo "Unknown version_bump: $BUMP" >&2
+              exit 1
+              ;;
+          esac
+
+          NEW_VERSION="$MA.$MI.$PA"
+          echo "New version: $NEW_VERSION"
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "current_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Update files to new version
+        env:
+          NEW_VERSION: ${{ steps.compute.outputs.new_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Updating UnityMcpBridge/package.json to $NEW_VERSION"
+          jq ".version = \"${NEW_VERSION}\"" UnityMcpBridge/package.json > UnityMcpBridge/package.json.tmp
+          mv UnityMcpBridge/package.json.tmp UnityMcpBridge/package.json
+
+          echo "Updating UnityMcpBridge/UnityMcpServer~/src/pyproject.toml to $NEW_VERSION"
+          sed -i '0,/^version = ".*"/s//version = "'"$NEW_VERSION"'"/' "UnityMcpBridge/UnityMcpServer~/src/pyproject.toml"
+
+      - name: Commit and push changes
+        env:
+          NEW_VERSION: ${{ steps.compute.outputs.new_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add UnityMcpBridge/package.json "UnityMcpBridge/UnityMcpServer~/src/pyproject.toml"
+          if git diff --cached --quiet; then
+            echo "No version changes to commit."
+          else
+            git commit -m "chore: bump version to ${NEW_VERSION}"
+          fi
+
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          echo "Pushing to branch: $BRANCH"
+          git push origin "$BRANCH"
+
+      - name: Create and push tag
+        env:
+          NEW_VERSION: ${{ steps.compute.outputs.new_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="v${NEW_VERSION}"
+          echo "Preparing to create tag $TAG"
+
+          if git ls-remote --tags origin | grep -q "refs/tags/$TAG$"; then
+            echo "Tag $TAG already exists on remote. Skipping tag creation."
+            exit 0
+          fi
+
+          git tag -a "$TAG" -m "Version ${NEW_VERSION}"
+          git push origin "$TAG"

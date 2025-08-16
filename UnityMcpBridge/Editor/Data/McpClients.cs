@@ -98,6 +98,25 @@ namespace UnityMcpBridge.Editor.Data
                 mcpType = McpTypes.VSCode,
                 configStatus = "Not Configured",
             },
+            // 3) Kiro
+            new()
+            {
+                name = "Kiro",
+                windowsConfigPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    ".kiro",
+                    "settings",
+                    "mcp.json"
+                ),
+                linuxConfigPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    ".kiro",
+                    "settings",
+                    "mcp.json"
+                ),
+                mcpType = McpTypes.Kiro,
+                configStatus = "Not Configured",
+            },
         };
 
         // Initialize status enums after construction

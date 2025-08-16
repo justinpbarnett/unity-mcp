@@ -1,9 +1,9 @@
 {
   "name": "com.coplaydev.unity-mcp",
-  "version": "2.1.1",
-  "displayName": "Unity MCP Bridge",
-  "description": "A bridge that manages and communicates with the sister application, Unity MCP Server, which allows for communications with MCP Clients like Claude Desktop or Cursor.",
-  "unity": "2020.3",
+  "version": "2.1.2",
+  "displayName": "Unity MCP",
+  "description": "A bridge that connects an LLM to Unity via the MCP (Model Context Protocol). This allows MCP Clients like Claude Desktop or Cursor to directly control your Unity Editor.\n\nJoin Our Discord: https://discord.gg/y4p8KfzrN4",
+  "unity": "2021.3",
   "documentationUrl": "https://github.com/CoplayDev/unity-mcp",
   "licensesUrl": "https://github.com/CoplayDev/unity-mcp/blob/main/LICENSE",
   "dependencies": {
@@ -19,7 +19,7 @@
     "mcp-client"
   ],
   "author": {
-    "name": "CoplayDev",
+    "name": "Coplay",
     "email": "support@coplay.dev",
     "url": "https://coplay.dev"
   }
