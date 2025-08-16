@@ -3,7 +3,10 @@ import socket, struct, json, sys
 
 HOST = "127.0.0.1"
 PORT = 6400
-SIZE_MB = int(sys.argv[1]) if len(sys.argv) > 1 else 5  # e.g., 5 or 10
+try:
+    SIZE_MB = int(sys.argv[1])
+except (IndexError, ValueError):
+    SIZE_MB = 5  # e.g., 5 or 10
 FILL = "R"
 
 def recv_exact(sock, n):
