@@ -8,10 +8,12 @@ using UnityEditor;
 using UnityEngine;
 using UnityMcpBridge.Editor.Helpers;
 using System.Threading;
+using System.Security.Cryptography;
 
 #if USE_ROSLYN
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Formatting;
 #endif
 
 #if UNITY_EDITOR
@@ -193,12 +195,12 @@ namespace UnityMcpBridge.Editor.Tools
                 case "apply_text_edits":
                 {
                     var edits = @params["edits"] as JArray;
-                    string precondition = @params["precondition_sha256"]?.ToString(); // optional, currently ignored here
-                    return ApplyTextEdits(fullPath, relativePath, name, edits);
+                    string precondition = @params["precondition_sha256"]?.ToString();
+                    return ApplyTextEdits(fullPath, relativePath, name, edits, precondition);
                 }
                 case "validate":
                 {
-                    string level = @params["level"]?.ToString()?.ToLowerInvariant() ?? "standard";
+                    string level = @params["level"]?.ToString()?.ToLowerInvariant() ?? "basic";
                     var chosen = level switch
                     {
                         "basic" => ValidationLevel.Basic,
@@ -209,13 +211,19 @@ namespace UnityMcpBridge.Editor.Tools
                     try { fileText = File.ReadAllText(fullPath); }
                     catch (Exception ex) { return Response.Error($"Failed to read script: {ex.Message}"); }
 
-                    bool ok = ValidateScriptSyntax(fileText, chosen, out string[] diags);
-                    var result = new
+                    bool ok = ValidateScriptSyntax(fileText, chosen, out string[] diagsRaw);
+                    var diags = (diagsRaw ?? Array.Empty<string>()).Select(s =>
                     {
-                        isValid = ok,
-                        diagnostics = diags ?? Array.Empty<string>()
-                    };
-                    return ok ? Response.Success("Validation completed.", result) : Response.Error("Validation failed.", result);
+                        var m = Regex.Match(s, @"^(ERROR|WARNING|INFO): (.*?)(?: \(Line (\d+)\))?$");
+                        string severity = m.Success ? m.Groups[1].Value.ToLowerInvariant() : "info";
+                        string message = m.Success ? m.Groups[2].Value : s;
+                        int lineNum = m.Success && int.TryParse(m.Groups[3].Value, out var l) ? l : 0;
+                        return new { line = lineNum, col = 0, severity, message };
+                    }).ToArray();
+
+                    var result = new { diagnostics = diags };
+                    return ok ? Response.Success("Validation completed.", result)
+                               : Response.Error("Validation failed.", result);
                 }
                 case "edit":
                     return Response.Error("Deprecated: use apply_text_edits. Structured 'edit' mode has been retired in favor of simple text edits.");
@@ -299,9 +307,10 @@ namespace UnityMcpBridge.Editor.Tools
                     try { File.Delete(tmp); } catch { }
                 }
 
+                var uri = $"unity://path/{relativePath}";
                 var ok = Response.Success(
                     $"Script '{name}.cs' created successfully at '{relativePath}'.",
-                    new { path = relativePath, scheduledRefresh = true }
+                    new { uri, scheduledRefresh = true }
                 );
 
                 // Schedule heavy work AFTER replying
@@ -423,11 +432,14 @@ namespace UnityMcpBridge.Editor.Tools
         /// <summary>
         /// Apply simple text edits specified by line/column ranges. Applies transactionally and validates result.
         /// </summary>
+        private const int MaxEditPayloadBytes = 15 * 1024;
+
         private static object ApplyTextEdits(
             string fullPath,
             string relativePath,
             string name,
-            JArray edits)
+            JArray edits,
+            string preconditionSha256)
         {
             if (!File.Exists(fullPath))
                 return Response.Error($"Script not found at '{relativePath}'.");
@@ -438,8 +450,15 @@ namespace UnityMcpBridge.Editor.Tools
             try { original = File.ReadAllText(fullPath); }
             catch (Exception ex) { return Response.Error($"Failed to read script: {ex.Message}"); }
 
+            string currentSha = ComputeSha256(original);
+            if (!string.IsNullOrEmpty(preconditionSha256) && !preconditionSha256.Equals(currentSha, StringComparison.OrdinalIgnoreCase))
+            {
+                return Response.Error("stale_file", new { status = "stale_file", expected_sha256 = preconditionSha256, current_sha256 = currentSha });
+            }
+
             // Convert edits to absolute index ranges
             var spans = new List<(int start, int end, string text)>();
+            int totalBytes = 0;
             foreach (var e in edits)
             {
                 try
@@ -457,11 +476,17 @@ namespace UnityMcpBridge.Editor.Tools
                     if (eidx < sidx) (sidx, eidx) = (eidx, sidx);
 
                     spans.Add((sidx, eidx, newText));
+                    totalBytes += System.Text.Encoding.UTF8.GetByteCount(newText);
                 }
                 catch (Exception ex)
                 {
                     return Response.Error($"Invalid edit payload: {ex.Message}");
                 }
+            }
+
+            if (totalBytes > MaxEditPayloadBytes)
+            {
+                return Response.Error("too_large", new { status = "too_large", limitBytes = MaxEditPayloadBytes, hint = "split into smaller edits" });
             }
 
             // Ensure non-overlap and apply from back to front
@@ -478,10 +503,40 @@ namespace UnityMcpBridge.Editor.Tools
                 working = working.Remove(sp.start, sp.end - sp.start).Insert(sp.start, sp.text ?? string.Empty);
             }
 
-            // Validate result
-            var level = GetValidationLevelFromGUI();
-            if (!ValidateScriptSyntax(working, level, out var errors))
-                return Response.Error("Script validation failed:\n" + string.Join("\n", errors ?? Array.Empty<string>()));
+            if (!CheckBalancedDelimiters(working, out int line, out char expected))
+            {
+                int startLine = Math.Max(1, line - 5);
+                int endLine = line + 5;
+                string hint = $"unbalanced_braces at line {line}. Call resources/read for lines {startLine}-{endLine} and resend a smaller apply_text_edits that restores balance.";
+                return Response.Error(hint, new { status = "unbalanced_braces", line, expected = expected.ToString() });
+            }
+
+#if USE_ROSLYN
+            var tree = CSharpSyntaxTree.ParseText(working);
+            var diagnostics = tree.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).Take(3)
+                .Select(d => new {
+                    line = d.Location.GetLineSpan().StartLinePosition.Line + 1,
+                    col = d.Location.GetLineSpan().StartLinePosition.Character + 1,
+                    code = d.Id,
+                    message = d.GetMessage()
+                }).ToArray();
+            if (diagnostics.Length > 0)
+            {
+                return Response.Error("syntax_error", new { status = "syntax_error", diagnostics });
+            }
+
+            // Optional formatting
+            try
+            {
+                var root = tree.GetRoot();
+                var workspace = new AdhocWorkspace();
+                root = Microsoft.CodeAnalysis.Formatting.Formatter.Format(root, workspace);
+                working = root.ToFullString();
+            }
+            catch { }
+#endif
+
+            string newSha = ComputeSha256(working);
 
             // Atomic write and schedule refresh
             try
@@ -495,7 +550,17 @@ namespace UnityMcpBridge.Editor.Tools
                 catch (IOException) { File.Copy(tmp, fullPath, true); try { File.Delete(tmp); } catch { } }
 
                 ManageScriptRefreshHelpers.ScheduleScriptRefresh(relativePath);
-                return Response.Success($"Applied {spans.Count} text edit(s) to '{relativePath}'.", new { path = relativePath, editsApplied = spans.Count, scheduledRefresh = true });
+                return Response.Success(
+                    $"Applied {spans.Count} text edit(s) to '{relativePath}'.",
+                    new
+                    {
+                        applied = spans.Count,
+                        unchanged = 0,
+                        sha256 = newSha,
+                        uri = $"unity://path/{relativePath}",
+                        scheduledRefresh = true
+                    }
+                );
             }
             catch (Exception ex)
             {
@@ -522,6 +587,84 @@ namespace UnityMcpBridge.Editor.Tools
             index = -1; return false;
         }
 
+        private static string ComputeSha256(string contents)
+        {
+            using (var sha = SHA256.Create())
+            {
+                var bytes = System.Text.Encoding.UTF8.GetBytes(contents);
+                var hash = sha.ComputeHash(bytes);
+                return BitConverter.ToString(hash).Replace("-", string.Empty).ToLowerInvariant();
+            }
+        }
+
+        private static bool CheckBalancedDelimiters(string text, out int line, out char expected)
+        {
+            var braceStack = new Stack<int>();
+            var parenStack = new Stack<int>();
+            var bracketStack = new Stack<int>();
+            bool inString = false, inChar = false, inSingle = false, inMulti = false, escape = false;
+            line = 1; expected = '\0';
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                char next = i + 1 < text.Length ? text[i + 1] : '\0';
+
+                if (c == '\n') { line++; if (inSingle) inSingle = false; }
+
+                if (escape) { escape = false; continue; }
+
+                if (inString)
+                {
+                    if (c == '\\') { escape = true; }
+                    else if (c == '"') inString = false;
+                    continue;
+                }
+                if (inChar)
+                {
+                    if (c == '\\') { escape = true; }
+                    else if (c == '\'') inChar = false;
+                    continue;
+                }
+                if (inSingle) continue;
+                if (inMulti)
+                {
+                    if (c == '*' && next == '/') { inMulti = false; i++; }
+                    continue;
+                }
+
+                if (c == '"') { inString = true; continue; }
+                if (c == '\'') { inChar = true; continue; }
+                if (c == '/' && next == '/') { inSingle = true; i++; continue; }
+                if (c == '/' && next == '*') { inMulti = true; i++; continue; }
+
+                switch (c)
+                {
+                    case '{': braceStack.Push(line); break;
+                    case '}':
+                        if (braceStack.Count == 0) { expected = '{'; return false; }
+                        braceStack.Pop();
+                        break;
+                    case '(': parenStack.Push(line); break;
+                    case ')':
+                        if (parenStack.Count == 0) { expected = '('; return false; }
+                        parenStack.Pop();
+                        break;
+                    case '[': bracketStack.Push(line); break;
+                    case ']':
+                        if (bracketStack.Count == 0) { expected = '['; return false; }
+                        bracketStack.Pop();
+                        break;
+                }
+            }
+
+            if (braceStack.Count > 0) { line = braceStack.Peek(); expected = '}'; return false; }
+            if (parenStack.Count > 0) { line = parenStack.Peek(); expected = ')'; return false; }
+            if (bracketStack.Count > 0) { line = bracketStack.Peek(); expected = ']'; return false; }
+
+            return true;
+        }
+
         private static object DeleteScript(string fullPath, string relativePath)
         {
             if (!File.Exists(fullPath))
@@ -537,7 +680,8 @@ namespace UnityMcpBridge.Editor.Tools
                 {
                     AssetDatabase.Refresh();
                     return Response.Success(
-                        $"Script '{Path.GetFileName(relativePath)}' moved to trash successfully."
+                        $"Script '{Path.GetFileName(relativePath)}' moved to trash successfully.",
+                        new { deleted = true }
                     );
                 }
                 else
