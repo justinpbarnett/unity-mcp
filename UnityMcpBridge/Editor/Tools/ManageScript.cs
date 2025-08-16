@@ -206,7 +206,9 @@ namespace UnityMcpBridge.Editor.Tools
                     var chosen = level switch
                     {
                         "basic" => ValidationLevel.Basic,
+                        "standard" => ValidationLevel.Standard,
                         "strict" => ValidationLevel.Strict,
+                        "comprehensive" => ValidationLevel.Comprehensive,
                         _ => ValidationLevel.Standard
                     };
                     string fileText;
