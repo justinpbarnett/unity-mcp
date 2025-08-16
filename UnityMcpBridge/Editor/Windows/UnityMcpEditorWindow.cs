@@ -1579,6 +1579,15 @@ namespace UnityMcpBridge.Editor.Windows
                                 }
                             }
                         }
+                        else
+                        {
+                            // Surface mismatch even if auto-manage is disabled
+                            mcpClient.SetStatus(McpStatus.IncorrectPath);
+                            if (debugLogsEnabled)
+                            {
+                                UnityEngine.Debug.Log($"UnityMCP: IDE config mismatch for '{mcpClient.name}' and auto-manage disabled");
+                            }
+                        }
                     }
                 }
                 else

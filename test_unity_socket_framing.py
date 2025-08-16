@@ -77,6 +77,9 @@ def main():
             s.sendall(header + body_bytes)
             resp_len = struct.unpack(">Q", recv_exact(s, 8))[0]
             print(f"Response framed length: {resp_len}")
+            MAX_RESP = 128 * 1024 * 1024
+            if resp_len <= 0 or resp_len > MAX_RESP:
+                raise RuntimeError(f"invalid framed length: {resp_len} (max {MAX_RESP})")
             resp = recv_exact(s, resp_len)
         else:
             s.sendall(body_bytes)

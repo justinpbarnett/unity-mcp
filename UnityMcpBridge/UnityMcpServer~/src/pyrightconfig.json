@@ -1,4 +1,11 @@
 {
   "typeCheckingMode": "basic",
-  "reportMissingImports": "none"
+  "reportMissingImports": "none",
+  "pythonVersion": "3.11",
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "pythonVersion": "3.11"
+    }
+  ]
 }
