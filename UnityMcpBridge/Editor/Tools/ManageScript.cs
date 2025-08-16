@@ -187,9 +187,11 @@ namespace UnityMcpBridge.Editor.Tools
                         namespaceName
                     );
                 case "read":
-                    return Response.Error("Deprecated: reads are resources now. Use resources/read with a unity://path or unity://script URI.");
+                    Debug.LogWarning("manage_script.read is deprecated; prefer resources/read. Serving read for backward compatibility.");
+                    return ReadScript(fullPath, relativePath);
                 case "update":
-                    return Response.Error("Deprecated: use apply_text_edits (small, line/col edits) rather than whole-file replace.");
+                    Debug.LogWarning("manage_script.update is deprecated; prefer apply_text_edits. Serving update for backward compatibility.");
+                    return UpdateScript(fullPath, relativePath, name, contents);
                 case "delete":
                     return DeleteScript(fullPath, relativePath);
                 case "apply_text_edits":
@@ -226,10 +228,13 @@ namespace UnityMcpBridge.Editor.Tools
                                : Response.Error("Validation failed.", result);
                 }
                 case "edit":
-                    return Response.Error("Deprecated: use apply_text_edits. Structured 'edit' mode has been retired in favor of simple text edits.");
+                    Debug.LogWarning("manage_script.edit is deprecated; prefer apply_text_edits. Serving structured edit for backward compatibility.");
+                    var edits = @params["edits"] as JArray;
+                    var options = @params["options"] as JObject;
+                    return EditScript(fullPath, relativePath, name, edits, options);
                 default:
                     return Response.Error(
-                        $"Unknown action: '{action}'. Valid actions are: create, read, update, delete."
+                        $"Unknown action: '{action}'. Valid actions are: create, delete, apply_text_edits, validate, read (deprecated), update (deprecated), edit (deprecated)."
                     );
             }
         }
@@ -581,10 +586,26 @@ namespace UnityMcpBridge.Editor.Tools
                 }
                 if (i == text.Length) break;
                 char c = text[i];
-                if (c == '\n') { line++; col = 1; }
-                else { col++; }
+                if (c == '\r')
+                {
+                    // Treat CRLF as a single newline; skip the LF if present
+                    if (i + 1 < text.Length && text[i + 1] == '\n')
+                        i++;
+                    line++;
+                    col = 1;
+                }
+                else if (c == '\n')
+                {
+                    line++;
+                    col = 1;
+                }
+                else
+                {
+                    col++;
+                }
             }
-            index = -1; return false;
+            index = -1;
+            return false;
         }
 
         private static string ComputeSha256(string contents)
