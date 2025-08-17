@@ -69,6 +69,13 @@ namespace UnityMcpBridge.Editor.Data
                     "Claude",
                     "claude_desktop_config.json"
                 ),
+                macConfigPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.Personal),
+                    "Library",
+                    "Application Support",
+                    "Claude",
+                    "claude_desktop_config.json"
+                ),
                 linuxConfigPath = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                     ".config",

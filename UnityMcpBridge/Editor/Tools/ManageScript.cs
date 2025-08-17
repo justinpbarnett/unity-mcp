@@ -196,9 +196,9 @@ namespace UnityMcpBridge.Editor.Tools
                     return DeleteScript(fullPath, relativePath);
                 case "apply_text_edits":
                 {
-                    var edits = @params["edits"] as JArray;
+                    var textEdits = @params["edits"] as JArray;
                     string precondition = @params["precondition_sha256"]?.ToString();
-                    return ApplyTextEdits(fullPath, relativePath, name, edits, precondition);
+                    return ApplyTextEdits(fullPath, relativePath, name, textEdits, precondition);
                 }
                 case "validate":
                 {
@@ -231,9 +231,9 @@ namespace UnityMcpBridge.Editor.Tools
                 }
                 case "edit":
                     Debug.LogWarning("manage_script.edit is deprecated; prefer apply_text_edits. Serving structured edit for backward compatibility.");
-                    var edits = @params["edits"] as JArray;
+                    var structEdits = @params["edits"] as JArray;
                     var options = @params["options"] as JObject;
-                    return EditScript(fullPath, relativePath, name, edits, options);
+                    return EditScript(fullPath, relativePath, name, structEdits, options);
                 default:
                     return Response.Error(
                         $"Unknown action: '{action}'. Valid actions are: create, delete, apply_text_edits, validate, read (deprecated), update (deprecated), edit (deprecated)."

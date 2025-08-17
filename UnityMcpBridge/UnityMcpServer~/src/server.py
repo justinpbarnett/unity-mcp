@@ -96,9 +96,11 @@ def asset_creation_strategy() -> str:
     )
 
 # Resources support: list and read Unity scripts/files
-@mcp.capabilities(resources={"listChanged": True})
-class _:
-    pass
+# Guard for older MCP versions without 'capabilities' API
+if hasattr(mcp, "capabilities"):
+    @mcp.capabilities(resources={"listChanged": True})
+    class _:
+        pass
 
 PROJECT_ROOT = Path(os.environ.get("UNITY_PROJECT_ROOT", Path.cwd())).resolve()
 ASSETS_ROOT = (PROJECT_ROOT / "Assets").resolve()
@@ -120,28 +122,32 @@ def _resolve_safe_path_from_uri(uri: str) -> Path | None:
         return None
     return p
 
-@mcp.resource.list()
-def list_resources(ctx: Context) -> list[dict]:
-    assets = []
-    try:
-        for p in ASSETS_ROOT.rglob("*.cs"):
-            rel = p.relative_to(PROJECT_ROOT).as_posix()
-            assets.append({"uri": f"unity://path/{rel}", "name": p.name})
-    except Exception:
-        pass
-    return assets
 
-@mcp.resource.read()
-def read_resource(ctx: Context, uri: str) -> dict:
-    p = _resolve_safe_path_from_uri(uri)
-    if not p or not p.exists():
-        return {"mimeType": "text/plain", "text": f"Resource not found: {uri}"}
-    try:
-        text = p.read_text(encoding="utf-8")
-        sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        return {"mimeType": "text/plain", "text": text, "metadata": {"sha256": sha}}
-    except Exception as e:
-        return {"mimeType": "text/plain", "text": f"Error reading resource: {e}"}
+if hasattr(mcp, "resource") and hasattr(getattr(mcp, "resource"), "list"):
+    @mcp.resource.list()
+    def list_resources(ctx: Context) -> list[dict]:
+        assets = []
+        try:
+            for p in ASSETS_ROOT.rglob("*.cs"):
+                rel = p.relative_to(PROJECT_ROOT).as_posix()
+                assets.append({"uri": f"unity://path/{rel}", "name": p.name})
+        except Exception:
+            pass
+        return assets
+
+if hasattr(mcp, "resource") and hasattr(getattr(mcp, "resource"), "read"):
+    @mcp.resource.read()
+    def read_resource(ctx: Context, uri: str) -> dict:
+        p = _resolve_safe_path_from_uri(uri)
+        if not p or not p.exists():
+            return {"mimeType": "text/plain", "text": f"Resource not found: {uri}"}
+        try:
+            text = p.read_text(encoding="utf-8")
+            sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            return {"mimeType": "text/plain", "text": text, "metadata": {"sha256": sha}}
+        except Exception as e:
+            return {"mimeType": "text/plain", "text": f"Error reading resource: {e}"}
+ af56d70 (Claude Desktop: write BOM-free config to macOS path; dual-path fallback; add uv -q for quieter stdio; MCP server: compatibility guards for capabilities/resource decorators and indentation fix; ManageScript: shadow var fix; robust mac config path.)
 
 # Run the server
 if __name__ == "__main__":

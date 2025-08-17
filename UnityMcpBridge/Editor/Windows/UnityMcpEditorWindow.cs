@@ -1083,12 +1083,32 @@ namespace UnityMcpBridge.Editor.Windows
 				serverSrc = ServerInstaller.GetServerPath();
 			}
 
-			// 2) Canonical args order
-			var newArgs = new[] { "run", "--directory", serverSrc, "server.py" };
+			// 2) Canonical args order (add quiet flag to prevent stdout noise breaking MCP stdio)
+			var newArgs = new[] { "-q", "run", "--directory", serverSrc, "server.py" };
 
 			// 3) Only write if changed
 			bool changed = !string.Equals(existingCommand, uvPath, StringComparison.Ordinal)
 				|| !ArgsEqual(existingArgs, newArgs);
+
+			// If the existing file contains a UTF-8 BOM, force a rewrite to remove it
+			try
+			{
+				if (System.IO.File.Exists(configPath))
+				{
+					using (var fs = new System.IO.FileStream(configPath, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite))
+					{
+						if (fs.Length >= 3)
+						{
+							int b1 = fs.ReadByte();
+							int b2 = fs.ReadByte();
+							int b3 = fs.ReadByte();
+							bool hasBom = (b1 == 0xEF && b2 == 0xBB && b3 == 0xBF);
+							if (hasBom) changed = true;
+						}
+					}
+				}
+			}
+			catch { }
 			if (!changed)
 			{
 				return "Configured successfully"; // nothing to do
@@ -1112,12 +1132,29 @@ namespace UnityMcpBridge.Editor.Windows
 			}
 
 			string mergedJson = JsonConvert.SerializeObject(existingConfig, jsonSettings);
-			string tmp = configPath + ".tmp";
-			System.IO.File.WriteAllText(tmp, mergedJson, System.Text.Encoding.UTF8);
-			if (System.IO.File.Exists(configPath))
-				System.IO.File.Replace(tmp, configPath, null);
-			else
-				System.IO.File.Move(tmp, configPath);
+
+			// Write without BOM and fsync to avoid transient parse failures
+			try
+			{
+				WriteJsonAtomicallyNoBom(configPath, mergedJson);
+			}
+			catch
+			{
+				// Fallback simple write if atomic path fails
+				var encNoBom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+				System.IO.File.WriteAllText(configPath, mergedJson, encNoBom);
+			}
+
+			// Validate that resulting file is valid JSON
+			try
+			{
+				var verify = System.IO.File.ReadAllText(configPath);
+				JsonConvert.DeserializeObject(verify);
+			}
+			catch (Exception ex)
+			{
+				UnityEngine.Debug.LogWarning($"UnityMCP: Wrote config but JSON re-parse failed: {ex.Message}");
+			}
 			try
 			{
 				if (IsValidUv(uvPath)) UnityEditor.EditorPrefs.SetString("UnityMCP.UvPath", uvPath);
@@ -1127,6 +1164,23 @@ namespace UnityMcpBridge.Editor.Windows
 
 			return "Configured successfully";
         }
+
+		private static void WriteJsonAtomicallyNoBom(string path, string json)
+		{
+			string tmp = path + ".tmp";
+			var encNoBom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+			using (var fs = new System.IO.FileStream(tmp, System.IO.FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None))
+			using (var sw = new System.IO.StreamWriter(fs, encNoBom))
+			{
+				sw.Write(json);
+				sw.Flush();
+				fs.Flush(true);
+			}
+			if (System.IO.File.Exists(path))
+				System.IO.File.Replace(tmp, path, null);
+			else
+				System.IO.File.Move(tmp, path);
+		}
 
         private void ShowManualConfigurationInstructions(
             string configPath,
@@ -1328,10 +1382,13 @@ namespace UnityMcpBridge.Editor.Windows
                 {
                     configPath = mcpClient.windowsConfigPath;
                 }
-                else if (
-                    RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                    || RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-                )
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                {
+                    configPath = string.IsNullOrEmpty(mcpClient.macConfigPath)
+                        ? mcpClient.linuxConfigPath
+                        : mcpClient.macConfigPath;
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
                 {
                     configPath = mcpClient.linuxConfigPath;
                 }
@@ -1353,6 +1410,22 @@ namespace UnityMcpBridge.Editor.Windows
                 }
 
                 string result = WriteToConfig(pythonDir, configPath, mcpClient);
+
+                // On macOS for Claude Desktop, also mirror to Linux-style path for backward compatibility
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                    && mcpClient?.mcpType == McpTypes.ClaudeDesktop)
+                {
+                    string altPath = mcpClient.linuxConfigPath;
+                    if (!string.IsNullOrEmpty(altPath) && !string.Equals(configPath, altPath, StringComparison.Ordinal))
+                    {
+                        try
+                        {
+                            Directory.CreateDirectory(Path.GetDirectoryName(altPath));
+                            WriteToConfig(pythonDir, altPath, mcpClient);
+                        }
+                        catch { }
+                    }
+                }
 
                 // Update the client status after successful configuration
                 if (result == "Configured successfully")
@@ -1482,10 +1555,13 @@ namespace UnityMcpBridge.Editor.Windows
                 {
                     configPath = mcpClient.windowsConfigPath;
                 }
-                else if (
-                    RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-                    || RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-                )
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                {
+                    configPath = string.IsNullOrEmpty(mcpClient.macConfigPath)
+                        ? mcpClient.linuxConfigPath
+                        : mcpClient.macConfigPath;
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
                 {
                     configPath = mcpClient.linuxConfigPath;
                 }
@@ -1497,8 +1573,26 @@ namespace UnityMcpBridge.Editor.Windows
 
                 if (!File.Exists(configPath))
                 {
-                    mcpClient.SetStatus(McpStatus.NotConfigured);
-                    return;
+                    // On macOS for Claude Desktop, fall back to Linux-style path if present
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                        && mcpClient?.mcpType == McpTypes.ClaudeDesktop)
+                    {
+                        string altPath = mcpClient.linuxConfigPath;
+                        if (!string.IsNullOrEmpty(altPath) && File.Exists(altPath))
+                        {
+                            configPath = altPath; // read from fallback
+                        }
+                        else
+                        {
+                            mcpClient.SetStatus(McpStatus.NotConfigured);
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        mcpClient.SetStatus(McpStatus.NotConfigured);
+                        return;
+                    }
                 }
 
                 string configJson = File.ReadAllText(configPath);

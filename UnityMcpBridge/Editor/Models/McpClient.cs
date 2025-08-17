@@ -4,6 +4,7 @@ namespace UnityMcpBridge.Editor.Models
     {
         public string name;
         public string windowsConfigPath;
+        public string macConfigPath;
         public string linuxConfigPath;
         public McpTypes mcpType;
         public string configStatus;
