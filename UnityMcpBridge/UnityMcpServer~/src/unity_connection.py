@@ -49,12 +49,23 @@ class UnityConnection:
                     self.use_framing = True
                     logger.debug('Unity MCP handshake received: FRAMING=1 (strict)')
                 else:
+                    try:
+                        msg = b'Unity MCP requires FRAMING=1'
+                        header = struct.pack('>Q', len(msg))
+                        self.sock.sendall(header + msg)
+                    except Exception:
+                        pass
                     raise ConnectionError(f'Unity MCP requires FRAMING=1, got: {text!r}')
             finally:
                 self.sock.settimeout(config.connection_timeout)
             return True
         except Exception as e:
             logger.error(f"Failed to connect to Unity: {str(e)}")
+            try:
+                if self.sock:
+                    self.sock.close()
+            except Exception:
+                pass
             self.sock = None
             return False
 
@@ -83,7 +94,7 @@ class UnityConnection:
             try:
                 header = self._read_exact(sock, 8)
                 payload_len = struct.unpack('>Q', header)[0]
-                if payload_len == 0 or payload_len > (64 * 1024 * 1024):
+                if payload_len > (64 * 1024 * 1024):
                     raise Exception(f"Invalid framed length: {payload_len}")
                 payload = self._read_exact(sock, payload_len)
                 logger.info(f"Received framed response ({len(payload)} bytes)")

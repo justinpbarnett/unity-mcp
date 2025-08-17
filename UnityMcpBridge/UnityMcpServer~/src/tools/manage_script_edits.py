@@ -51,10 +51,11 @@ def _apply_edits_locally(original_text: str, edits: List[Dict[str, Any]]) -> str
             end_line = int(edit.get("endLine", start_line))
             replacement = edit.get("text", "")
             lines = text.splitlines(keepends=True)
-            if start_line < 1 or end_line < start_line or end_line > len(lines):
+            max_end = len(lines) + 1
+            if start_line < 1 or end_line < start_line or end_line > max_end:
                 raise RuntimeError("replace_range out of bounds")
             a = start_line - 1
-            b = end_line
+            b = min(end_line, len(lines))
             rep = replacement
             if rep and not rep.endswith("\n"):
                 rep += "\n"
@@ -88,7 +89,8 @@ def register_manage_script_edits_tools(mcp: FastMCP):
         script_type: str = "MonoBehaviour",
         namespace: str = "",
     ) -> Dict[str, Any]:
-        # If the edits request structured class/method ops, route directly to Unity's 'edit' action
+        # If the edits request structured class/method ops, route directly to Unity's 'edit' action.
+        # These bypass local text validation/encoding since Unity performs the semantic changes.
         for e in edits or []:
             op = (e.get("op") or e.get("operation") or e.get("type") or e.get("mode") or "").strip().lower()
             if op in ("replace_class", "delete_class", "replace_method", "delete_method", "insert_method"):

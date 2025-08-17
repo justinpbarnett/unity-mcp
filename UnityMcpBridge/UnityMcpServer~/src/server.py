@@ -9,6 +9,8 @@ from config import config
 from tools import register_all_tools
 from unity_connection import get_unity_connection, UnityConnection
 from pathlib import Path
+import os
+import hashlib
 
 # Configure logging: strictly stderr/file only (never stdout)
 stderr_handler = logging.StreamHandler(stream=sys.stderr)
@@ -98,52 +100,44 @@ def asset_creation_strategy() -> str:
 class _:
     pass
 
-import os
-import hashlib
+PROJECT_ROOT = Path(os.environ.get("UNITY_PROJECT_ROOT", Path.cwd())).resolve()
+ASSETS_ROOT = (PROJECT_ROOT / "Assets").resolve()
 
-def _unity_assets_root() -> str:
-    # Heuristic: from the Unity project root (one level up from Library/ProjectSettings), 'Assets'
-    # Here, assume server runs from repo; let clients pass absolute paths under project too.
-    return None
-
-def _safe_path(uri: str) -> str | None:
-    # URIs: unity://path/Assets/... or file:///absolute
+def _resolve_safe_path_from_uri(uri: str) -> Path | None:
+    raw: str | None = None
     if uri.startswith("unity://path/"):
-        p = uri[len("unity://path/"):]
-        return p
-    if uri.startswith("file://"):
-        return uri[len("file://"):]
-    # Minimal tolerance for plain Assets/... paths
-    if uri.startswith("Assets/"):
-        return uri
-    return None
+        raw = uri[len("unity://path/"):]
+    elif uri.startswith("file://"):
+        raw = uri[len("file://"):]
+    elif uri.startswith("Assets/"):
+        raw = uri
+    if raw is None:
+        return None
+    p = (PROJECT_ROOT / raw).resolve()
+    try:
+        p.relative_to(PROJECT_ROOT)
+    except ValueError:
+        return None
+    return p
 
 @mcp.resource.list()
 def list_resources(ctx: Context) -> list[dict]:
-    # Lightweight: expose only C# under Assets by default
     assets = []
     try:
-        root = os.getcwd()
-        for base, _, files in os.walk(os.path.join(root, "Assets")):
-            for f in files:
-                if f.endswith(".cs"):
-                    rel = os.path.relpath(os.path.join(base, f), root).replace("\\", "/")
-                    assets.append({
-                        "uri": f"unity://path/{rel}",
-                        "name": os.path.basename(rel)
-                    })
+        for p in ASSETS_ROOT.rglob("*.cs"):
+            rel = p.relative_to(PROJECT_ROOT).as_posix()
+            assets.append({"uri": f"unity://path/{rel}", "name": p.name})
     except Exception:
         pass
     return assets
 
 @mcp.resource.read()
 def read_resource(ctx: Context, uri: str) -> dict:
-    path = _safe_path(uri)
-    if not path or not os.path.exists(path):
+    p = _resolve_safe_path_from_uri(uri)
+    if not p or not p.exists():
         return {"mimeType": "text/plain", "text": f"Resource not found: {uri}"}
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            text = f.read()
+        text = p.read_text(encoding="utf-8")
         sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
         return {"mimeType": "text/plain", "text": text, "metadata": {"sha256": sha}}
     except Exception as e:
