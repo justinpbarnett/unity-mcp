@@ -431,15 +431,7 @@ namespace UnityMcpBridge.Editor
                         if (true)
                         {
                             // Enforced framed mode for this connection
-                            byte[] header = await ReadExactAsync(stream, 8, FrameIOTimeoutMs);
-                            ulong payloadLen = ReadUInt64BigEndian(header);
-                            if (payloadLen == 0UL || payloadLen > MaxFrameBytes)
-                            {
-                                throw new System.IO.IOException($"Invalid framed length: {payloadLen}");
-                            }
-                            int payloadLenInt = checked((int)payloadLen);
-                            byte[] payload = await ReadExactAsync(stream, payloadLenInt, FrameIOTimeoutMs);
-                            commandText = System.Text.Encoding.UTF8.GetString(payload);
+                            commandText = await ReadFrameAsUtf8Async(stream, FrameIOTimeoutMs);
                         }
 
                         try
@@ -459,16 +451,7 @@ namespace UnityMcpBridge.Editor
                                 /*lang=json,strict*/
                                 "{\"status\":\"success\",\"result\":{\"message\":\"pong\"}}"
                             );
-                            if ((ulong)pingResponseBytes.Length > MaxFrameBytes)
-                            {
-                                throw new System.IO.IOException($"Frame too large: {pingResponseBytes.Length}");
-                            }
-                            {
-                                byte[] outHeader = new byte[8];
-                                WriteUInt64BigEndian(outHeader, (ulong)pingResponseBytes.Length);
-                                await stream.WriteAsync(outHeader, 0, outHeader.Length);
-                            }
-                            await stream.WriteAsync(pingResponseBytes, 0, pingResponseBytes.Length);
+                            await WriteFrameAsync(stream, pingResponseBytes);
                             continue;
                         }
 
@@ -479,16 +462,7 @@ namespace UnityMcpBridge.Editor
 
                         string response = await tcs.Task;
                         byte[] responseBytes = System.Text.Encoding.UTF8.GetBytes(response);
-                        if ((ulong)responseBytes.Length > MaxFrameBytes)
-                        {
-                            throw new System.IO.IOException($"Frame too large: {responseBytes.Length}");
-                        }
-                        {
-                            byte[] outHeader = new byte[8];
-                            WriteUInt64BigEndian(outHeader, (ulong)responseBytes.Length);
-                            await stream.WriteAsync(outHeader, 0, outHeader.Length);
-                        }
-                        await stream.WriteAsync(responseBytes, 0, responseBytes.Length);
+                        await WriteFrameAsync(stream, responseBytes);
                     }
                     catch (Exception ex)
                     {
@@ -497,22 +471,6 @@ namespace UnityMcpBridge.Editor
                     }
                 }
             }
-        }
-
-        private static async System.Threading.Tasks.Task<byte[]> ReadExactAsync(NetworkStream stream, int count)
-        {
-            byte[] data = new byte[count];
-            int offset = 0;
-            while (offset < count)
-            {
-                int r = await stream.ReadAsync(data, offset, count - offset);
-                if (r == 0)
-                {
-                    throw new System.IO.IOException("Connection closed before reading expected bytes");
-                }
-                offset += r;
-            }
-            return data;
         }
 
         // Timeout-aware exact read helper; avoids indefinite stalls
@@ -536,6 +494,35 @@ namespace UnityMcpBridge.Editor
                 offset += r;
             }
             return data;
+        }
+
+        private static async System.Threading.Tasks.Task WriteFrameAsync(NetworkStream stream, byte[] payload)
+        {
+            if ((ulong)payload.LongLength > MaxFrameBytes)
+            {
+                throw new System.IO.IOException($"Frame too large: {payload.LongLength}");
+            }
+            byte[] header = new byte[8];
+            WriteUInt64BigEndian(header, (ulong)payload.LongLength);
+            await stream.WriteAsync(header, 0, header.Length);
+            await stream.WriteAsync(payload, 0, payload.Length);
+        }
+
+        private static async System.Threading.Tasks.Task<string> ReadFrameAsUtf8Async(NetworkStream stream, int timeoutMs)
+        {
+            byte[] header = await ReadExactAsync(stream, 8, timeoutMs);
+            ulong payloadLen = ReadUInt64BigEndian(header);
+            if (payloadLen == 0UL || payloadLen > MaxFrameBytes)
+            {
+                throw new System.IO.IOException($"Invalid framed length: {payloadLen}");
+            }
+            if (payloadLen > int.MaxValue)
+            {
+                throw new System.IO.IOException("Frame too large for buffer");
+            }
+            int count = (int)payloadLen;
+            byte[] payload = await ReadExactAsync(stream, count, timeoutMs);
+            return System.Text.Encoding.UTF8.GetString(payload);
         }
 
         private static ulong ReadUInt64BigEndian(byte[] buffer)
