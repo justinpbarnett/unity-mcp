@@ -11,6 +11,8 @@ import pytest
 # add server src to path
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "UnityMcpBridge" / "UnityMcpServer~" / "src"
+if not SRC.exists():
+    raise FileNotFoundError(f"Server source directory not found: {SRC}")
 sys.path.insert(0, str(SRC))
 
 from unity_connection import UnityConnection
@@ -22,8 +24,10 @@ def start_dummy_server(greeting: bytes, respond_ping: bool = False):
     sock.bind(("127.0.0.1", 0))
     sock.listen(1)
     port = sock.getsockname()[1]
+    ready = threading.Event()
 
     def _run():
+        ready.set()
         conn, _ = sock.accept()
         if greeting:
             conn.sendall(greeting)
@@ -46,10 +50,13 @@ def start_dummy_server(greeting: bytes, respond_ping: bool = False):
         time.sleep(0.1)
         try:
             conn.close()
+        except Exception:
+            pass
         finally:
             sock.close()
 
     threading.Thread(target=_run, daemon=True).start()
+    ready.wait()
     return port
 
 
