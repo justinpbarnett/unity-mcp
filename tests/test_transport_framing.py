@@ -4,6 +4,7 @@ import struct
 import socket
 import threading
 import time
+import select
 from pathlib import Path
 
 import pytest
@@ -60,6 +61,33 @@ def start_dummy_server(greeting: bytes, respond_ping: bool = False):
     return port
 
 
+def start_handshake_enforcing_server():
+    """Server that drops connection if client sends data before handshake."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    sock.listen(1)
+    port = sock.getsockname()[1]
+    ready = threading.Event()
+
+    def _run():
+        ready.set()
+        conn, _ = sock.accept()
+        # if client sends any data before greeting, disconnect
+        r, _, _ = select.select([conn], [], [], 0.1)
+        if r:
+            conn.close()
+            sock.close()
+            return
+        conn.sendall(b"MCP/0.1 FRAMING=1\n")
+        time.sleep(0.1)
+        conn.close()
+        sock.close()
+
+    threading.Thread(target=_run, daemon=True).start()
+    ready.wait()
+    return port
+
+
 def test_handshake_requires_framing():
     port = start_dummy_server(b"MCP/0.1\n")
     conn = UnityConnection(host="127.0.0.1", port=port)
@@ -79,9 +107,19 @@ def test_small_frame_ping_pong():
     conn.disconnect()
 
 
-@pytest.mark.skip(reason="TODO: unframed data before reading greeting should disconnect")
 def test_unframed_data_disconnect():
-    pass
+    port = start_handshake_enforcing_server()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect(("127.0.0.1", port))
+    sock.sendall(b"BAD")
+    time.sleep(0.1)
+    try:
+        data = sock.recv(1024)
+        assert data == b""
+    except ConnectionError:
+        pass
+    finally:
+        sock.close()
 
 
 @pytest.mark.skip(reason="TODO: zero-length payload should raise error")

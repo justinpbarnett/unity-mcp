@@ -58,6 +58,18 @@ Unity MCP connects your tools using two components:
 
 ---
 
+### Transport framing
+
+Unity MCP requires explicit framing negotiation. After connecting, the server
+sends a `MCP/0.1` greeting. Clients must respond with `FRAMING=1`, and all
+subsequent messages are sent as 8-byte big-endian length-prefixed JSON frames.
+
+### Resource URIs
+
+Assets are addressed using `unity://` URIs relative to the project root. For
+example, `unity://path/Assets/Scripts/Foo.cs` refers to the file
+`Assets/Scripts/Foo.cs` inside the Unity project.
+
 ## Installation ⚙️
 
 > **Note:** The setup is constantly improving as we update the package. Check back if you randomly start to run into issues.
