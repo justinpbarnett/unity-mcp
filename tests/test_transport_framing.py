@@ -9,11 +9,18 @@ from pathlib import Path
 
 import pytest
 
-# add server src to path
+# locate server src dynamically to avoid hardcoded layout assumptions
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "UnityMcpBridge" / "UnityMcpServer~" / "src"
-if not SRC.exists():
-    raise FileNotFoundError(f"Server source directory not found: {SRC}")
+candidates = [
+    ROOT / "UnityMcpBridge" / "UnityMcpServer~" / "src",
+    ROOT / "UnityMcpServer~" / "src",
+]
+SRC = next((p for p in candidates if p.exists()), None)
+if SRC is None:
+    searched = "\n".join(str(p) for p in candidates)
+    raise FileNotFoundError(
+        "Unity MCP server source not found. Tried:\n" + searched
+    )
 sys.path.insert(0, str(SRC))
 
 from unity_connection import UnityConnection
