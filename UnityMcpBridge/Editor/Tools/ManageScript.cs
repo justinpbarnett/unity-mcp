@@ -202,7 +202,7 @@ namespace UnityMcpBridge.Editor.Tools
                 }
                 case "validate":
                 {
-                    string level = @params["level"]?.ToString()?.ToLowerInvariant() ?? "basic";
+                    string level = @params["level"]?.ToString()?.ToLowerInvariant() ?? "standard";
                     var chosen = level switch
                     {
                         "basic" => ValidationLevel.Basic,
@@ -343,8 +343,10 @@ namespace UnityMcpBridge.Editor.Tools
 
                 // Return both normal and encoded contents for larger files
                 bool isLarge = contents.Length > 10000; // If content is large, include encoded version
+                var uri = $"unity://path/{relativePath}";
                 var responseData = new
                 {
+                    uri,
                     path = relativePath,
                     contents = contents,
                     // For large files, also include base64-encoded version
@@ -420,9 +422,10 @@ namespace UnityMcpBridge.Editor.Tools
                 }
 
                 // Prepare success response BEFORE any operation that can trigger a domain reload
+                var uri = $"unity://path/{relativePath}";
                 var ok = Response.Success(
                     $"Script '{name}.cs' updated successfully at '{relativePath}'.",
-                    new { path = relativePath, scheduledRefresh = true }
+                    new { uri, path = relativePath, scheduledRefresh = true }
                 );
 
                 // Schedule a debounced import/compile on next editor tick to avoid stalling the reply
@@ -1523,11 +1526,14 @@ namespace UnityMcpBridge.Editor.Tools
             }
 
 #if USE_ROSLYN
-            // Advanced Roslyn-based validation
-            if (!ValidateScriptSyntaxRoslyn(contents, level, errorList))
+            // Advanced Roslyn-based validation: only run for Standard+; fail on Roslyn errors
+            if (level >= ValidationLevel.Standard)
             {
-                errors = errorList.ToArray();
-                return level != ValidationLevel.Standard; //TODO: Allow standard to run roslyn right now, might formalize it in the future
+                if (!ValidateScriptSyntaxRoslyn(contents, level, errorList))
+                {
+                    errors = errorList.ToArray();
+                    return false;
+                }
             }
 #endif
 
@@ -2105,20 +2111,28 @@ static class RefreshDebounce
 {
     private static int _pending;
     private static DateTime _last;
+    private static readonly object _lock = new object();
+    private static readonly HashSet<string> _paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    private static bool _scheduled;
 
     public static void Schedule(string relPath, TimeSpan window)
     {
         Interlocked.Exchange(ref _pending, 1);
+        lock (_lock) { _paths.Add(relPath); }
         var now = DateTime.UtcNow;
-        if ((now - _last) < window) return;
+        if (_scheduled && (now - _last) < window) return;
         _last = now;
+        _scheduled = true;
 
         EditorApplication.delayCall += () =>
         {
+            _scheduled = false;
             if (Interlocked.Exchange(ref _pending, 0) == 1)
             {
-                // Prefer targeted import and script compile over full refresh
-                AssetDatabase.ImportAsset(relPath, ImportAssetOptions.ForceUpdate);
+                string[] toImport;
+                lock (_lock) { toImport = _paths.ToArray(); _paths.Clear(); }
+                foreach (var p in toImport)
+                    AssetDatabase.ImportAsset(p, ImportAssetOptions.ForceUpdate);
 #if UNITY_EDITOR
                 UnityEditor.Compilation.CompilationPipeline.RequestScriptCompilation();
 #endif
