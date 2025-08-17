@@ -408,17 +408,29 @@ namespace UnityMcpBridge.Editor.Tools
                 try
                 {
                     File.Replace(tempPath, fullPath, backupPath);
+                    // Clean up backup to avoid stray assets inside the project
+                    try
+                    {
+                        if (File.Exists(backupPath))
+                            File.Delete(backupPath);
+                    }
+                    catch
+                    {
+                        // ignore failures deleting the backup
+                    }
                 }
                 catch (PlatformNotSupportedException)
                 {
                     File.Copy(tempPath, fullPath, true);
                     try { File.Delete(tempPath); } catch { }
+                    try { if (File.Exists(backupPath)) File.Delete(backupPath); } catch { }
                 }
                 catch (IOException)
                 {
                     // Cross-volume moves can throw IOException; fallback to copy
                     File.Copy(tempPath, fullPath, true);
                     try { File.Delete(tempPath); } catch { }
+                    try { if (File.Exists(backupPath)) File.Delete(backupPath); } catch { }
                 }
 
                 // Prepare success response BEFORE any operation that can trigger a domain reload
@@ -453,6 +465,17 @@ namespace UnityMcpBridge.Editor.Tools
         {
             if (!File.Exists(fullPath))
                 return Response.Error($"Script not found at '{relativePath}'.");
+            // Refuse edits if the target is a symlink
+            try
+            {
+                var attrs = File.GetAttributes(fullPath);
+                if ((attrs & FileAttributes.ReparsePoint) != 0)
+                    return Response.Error("Refusing to edit a symlinked script path.");
+            }
+            catch
+            {
+                // If checking attributes fails, proceed without the symlink guard
+            }
             if (edits == null || edits.Count == 0)
                 return Response.Error("No edits provided.");
 
@@ -558,9 +581,23 @@ namespace UnityMcpBridge.Editor.Tools
                 var tmp = fullPath + ".tmp";
                 File.WriteAllText(tmp, working, enc);
                 string backup = fullPath + ".bak";
-                try { File.Replace(tmp, fullPath, backup); }
-                catch (PlatformNotSupportedException) { File.Copy(tmp, fullPath, true); try { File.Delete(tmp); } catch { } }
-                catch (IOException) { File.Copy(tmp, fullPath, true); try { File.Delete(tmp); } catch { } }
+                try
+                {
+                    File.Replace(tmp, fullPath, backup);
+                    try { if (File.Exists(backup)) File.Delete(backup); } catch { /* ignore */ }
+                }
+                catch (PlatformNotSupportedException)
+                {
+                    File.Copy(tmp, fullPath, true);
+                    try { File.Delete(tmp); } catch { }
+                    try { if (File.Exists(backup)) File.Delete(backup); } catch { }
+                }
+                catch (IOException)
+                {
+                    File.Copy(tmp, fullPath, true);
+                    try { File.Delete(tmp); } catch { }
+                    try { if (File.Exists(backup)) File.Delete(backup); } catch { }
+                }
 
                 ManageScriptRefreshHelpers.ScheduleScriptRefresh(relativePath);
                 return Response.Success(
@@ -741,6 +778,17 @@ namespace UnityMcpBridge.Editor.Tools
         {
             if (!File.Exists(fullPath))
                 return Response.Error($"Script not found at '{relativePath}'.");
+            // Refuse edits if the target is a symlink
+            try
+            {
+                var attrs = File.GetAttributes(fullPath);
+                if ((attrs & FileAttributes.ReparsePoint) != 0)
+                    return Response.Error("Refusing to edit a symlinked script path.");
+            }
+            catch
+            {
+                // ignore failures checking attributes and proceed
+            }
             if (edits == null || edits.Count == 0)
                 return Response.Error("No edits provided.");
 
@@ -989,9 +1037,23 @@ namespace UnityMcpBridge.Editor.Tools
                 var tmp = fullPath + ".tmp";
                 File.WriteAllText(tmp, working, enc);
                 string backup = fullPath + ".bak";
-                try { File.Replace(tmp, fullPath, backup); }
-                catch (PlatformNotSupportedException) { File.Copy(tmp, fullPath, true); try { File.Delete(tmp); } catch { } }
-                catch (IOException) { File.Copy(tmp, fullPath, true); try { File.Delete(tmp); } catch { } }
+                try
+                {
+                    File.Replace(tmp, fullPath, backup);
+                    try { if (File.Exists(backup)) File.Delete(backup); } catch { /* ignore */ }
+                }
+                catch (PlatformNotSupportedException)
+                {
+                    File.Copy(tmp, fullPath, true);
+                    try { File.Delete(tmp); } catch { }
+                    try { if (File.Exists(backup)) File.Delete(backup); } catch { }
+                }
+                catch (IOException)
+                {
+                    File.Copy(tmp, fullPath, true);
+                    try { File.Delete(tmp); } catch { }
+                    try { if (File.Exists(backup)) File.Delete(backup); } catch { }
+                }
 
                 // Decide refresh behavior
                 string refreshMode = options?["refresh"]?.ToString()?.ToLowerInvariant();
@@ -1004,11 +1066,17 @@ namespace UnityMcpBridge.Editor.Tools
 
                 if (immediate)
                 {
-                    // Force an immediate import/compile on the main thread
-                    AssetDatabase.ImportAsset(relativePath, ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate);
+                    // Force on main thread
+                    EditorApplication.delayCall += () =>
+                    {
+                        AssetDatabase.ImportAsset(
+                            relativePath,
+                            ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate
+                        );
 #if UNITY_EDITOR
-                    UnityEditor.Compilation.CompilationPipeline.RequestScriptCompilation();
+                        UnityEditor.Compilation.CompilationPipeline.RequestScriptCompilation();
 #endif
+                    };
                 }
                 else
                 {
