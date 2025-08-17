@@ -465,7 +465,7 @@ namespace UnityMcpBridge.Editor.Tools
 
             // Convert edits to absolute index ranges
             var spans = new List<(int start, int end, string text)>();
-            int totalBytes = 0;
+            long totalBytes = 0;
             foreach (var e in edits)
             {
                 try
@@ -483,7 +483,10 @@ namespace UnityMcpBridge.Editor.Tools
                     if (eidx < sidx) (sidx, eidx) = (eidx, sidx);
 
                     spans.Add((sidx, eidx, newText));
-                    totalBytes += System.Text.Encoding.UTF8.GetByteCount(newText);
+                    checked
+                    {
+                        totalBytes += System.Text.Encoding.UTF8.GetByteCount(newText);
+                    }
                 }
                 catch (Exception ex)
                 {
