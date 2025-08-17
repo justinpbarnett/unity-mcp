@@ -2178,36 +2178,68 @@ namespace UnityMcpBridge.Editor.Tools
 static class RefreshDebounce
 {
     private static int _pending;
-    private static DateTime _last;
     private static readonly object _lock = new object();
     private static readonly HashSet<string> _paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    // The timestamp of the most recent schedule request.
+    private static DateTime _lastRequest;
+
+    // Guard to ensure we only have a single ticking callback running.
     private static bool _scheduled;
 
     public static void Schedule(string relPath, TimeSpan window)
     {
+        // Record that work is pending and track the path in a threadsafe way.
         Interlocked.Exchange(ref _pending, 1);
-        lock (_lock) { _paths.Add(relPath); }
-        var now = DateTime.UtcNow;
-        if (_scheduled && (now - _last) < window) return;
-        _last = now;
-        _scheduled = true;
-
-        EditorApplication.delayCall += () =>
+        lock (_lock)
         {
-            _scheduled = false;
-            if (Interlocked.Exchange(ref _pending, 0) == 1)
+            _paths.Add(relPath);
+            _lastRequest = DateTime.UtcNow;
+
+            // If a debounce timer is already scheduled it will pick up the new request.
+            if (_scheduled)
+                return;
+
+            _scheduled = true;
+        }
+
+        // Kick off a ticking callback that waits until the window has elapsed
+        // from the last request before performing the refresh.
+        EditorApplication.delayCall += () => Tick(window);
+    }
+
+    private static void Tick(TimeSpan window)
+    {
+        bool ready;
+        lock (_lock)
+        {
+            // Only proceed once the debounce window has fully elapsed.
+            ready = (DateTime.UtcNow - _lastRequest) >= window;
+            if (ready)
             {
-                string[] toImport;
-                lock (_lock) { toImport = _paths.ToArray(); _paths.Clear(); }
-                foreach (var p in toImport)
-                    AssetDatabase.ImportAsset(p, ImportAssetOptions.ForceUpdate);
-#if UNITY_EDITOR
-                UnityEditor.Compilation.CompilationPipeline.RequestScriptCompilation();
-#endif
-                // Fallback if needed:
-                // AssetDatabase.Refresh();
+                _scheduled = false;
             }
-        };
+        }
+
+        if (!ready)
+        {
+            // Window has not yet elapsed; check again on the next editor tick.
+            EditorApplication.delayCall += () => Tick(window);
+            return;
+        }
+
+        if (Interlocked.Exchange(ref _pending, 0) == 1)
+        {
+            string[] toImport;
+            lock (_lock) { toImport = _paths.ToArray(); _paths.Clear(); }
+            foreach (var p in toImport)
+                AssetDatabase.ImportAsset(p, ImportAssetOptions.ForceUpdate);
+#if UNITY_EDITOR
+            UnityEditor.Compilation.CompilationPipeline.RequestScriptCompilation();
+#endif
+            // Fallback if needed:
+            // AssetDatabase.Refresh();
+        }
     }
 }
 
