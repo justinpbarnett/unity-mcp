@@ -198,7 +198,9 @@ namespace UnityMcpBridge.Editor.Tools
                 {
                     var textEdits = @params["edits"] as JArray;
                     string precondition = @params["precondition_sha256"]?.ToString();
-                    return ApplyTextEdits(fullPath, relativePath, name, textEdits, precondition);
+                    // Respect optional refresh options for immediate compile
+                    string refreshOpt = @params["options"]?["refresh"]?.ToString()?.ToLowerInvariant();
+                    return ApplyTextEdits(fullPath, relativePath, name, textEdits, precondition, refreshOpt);
                 }
                 case "validate":
                 {
@@ -461,7 +463,8 @@ namespace UnityMcpBridge.Editor.Tools
             string relativePath,
             string name,
             JArray edits,
-            string preconditionSha256)
+            string preconditionSha256,
+            string refreshModeFromCaller = null)
         {
             if (!File.Exists(fullPath))
                 return Response.Error($"Script not found at '{relativePath}'.");
@@ -653,7 +656,27 @@ namespace UnityMcpBridge.Editor.Tools
                     try { if (File.Exists(backup)) File.Delete(backup); } catch { }
                 }
 
-                ManageScriptRefreshHelpers.ScheduleScriptRefresh(relativePath);
+                // Respect refresh mode: immediate vs debounced
+                bool immediate = string.Equals(refreshModeFromCaller, "immediate", StringComparison.OrdinalIgnoreCase) ||
+                                  string.Equals(refreshModeFromCaller, "sync", StringComparison.OrdinalIgnoreCase);
+                if (immediate)
+                {
+                    EditorApplication.delayCall += () =>
+                    {
+                        AssetDatabase.ImportAsset(
+                            relativePath,
+                            ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate
+                        );
+#if UNITY_EDITOR
+                        UnityEditor.Compilation.CompilationPipeline.RequestScriptCompilation();
+#endif
+                    };
+                }
+                else
+                {
+                    ManageScriptRefreshHelpers.ScheduleScriptRefresh(relativePath);
+                }
+
                 return Response.Success(
                     $"Applied {spans.Count} text edit(s) to '{relativePath}'.",
                     new
@@ -662,7 +685,7 @@ namespace UnityMcpBridge.Editor.Tools
                         unchanged = 0,
                         sha256 = newSha,
                         uri = $"unity://path/{relativePath}",
-                        scheduledRefresh = true
+                        scheduledRefresh = !immediate
                     }
                 );
             }
@@ -1051,8 +1074,98 @@ namespace UnityMcpBridge.Editor.Tools
                             break;
                         }
 
+                        case "anchor_insert":
+                        {
+                            string anchor = op.Value<string>("anchor");
+                            string position = (op.Value<string>("position") ?? "before").ToLowerInvariant();
+                            string text = op.Value<string>("text") ?? ExtractReplacement(op);
+                            if (string.IsNullOrWhiteSpace(anchor)) return Response.Error("anchor_insert requires 'anchor' (regex).");
+                            if (string.IsNullOrEmpty(text)) return Response.Error("anchor_insert requires non-empty 'text'.");
+
+                            try
+                            {
+                                var rx = new Regex(anchor, RegexOptions.Multiline);
+                                var m = rx.Match(working);
+                                if (!m.Success) return Response.Error($"anchor_insert: anchor not found: {anchor}");
+                                int insAt = position == "after" ? m.Index + m.Length : m.Index;
+                                string norm = NormalizeNewlines(text);
+                                if (applySequentially)
+                                {
+                                    working = working.Insert(insAt, norm);
+                                    appliedCount++;
+                                }
+                                else
+                                {
+                                    replacements.Add((insAt, 0, norm));
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                return Response.Error($"anchor_insert failed: {ex.Message}");
+                            }
+                            break;
+                        }
+
+                        case "anchor_delete":
+                        {
+                            string anchor = op.Value<string>("anchor");
+                            if (string.IsNullOrWhiteSpace(anchor)) return Response.Error("anchor_delete requires 'anchor' (regex).");
+                            try
+                            {
+                                var rx = new Regex(anchor, RegexOptions.Multiline);
+                                var m = rx.Match(working);
+                                if (!m.Success) return Response.Error($"anchor_delete: anchor not found: {anchor}");
+                                int delAt = m.Index;
+                                int delLen = m.Length;
+                                if (applySequentially)
+                                {
+                                    working = working.Remove(delAt, delLen);
+                                    appliedCount++;
+                                }
+                                else
+                                {
+                                    replacements.Add((delAt, delLen, string.Empty));
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                return Response.Error($"anchor_delete failed: {ex.Message}");
+                            }
+                            break;
+                        }
+
+                        case "anchor_replace":
+                        {
+                            string anchor = op.Value<string>("anchor");
+                            string replacement = op.Value<string>("text") ?? op.Value<string>("replacement") ?? ExtractReplacement(op) ?? string.Empty;
+                            if (string.IsNullOrWhiteSpace(anchor)) return Response.Error("anchor_replace requires 'anchor' (regex).");
+                            try
+                            {
+                                var rx = new Regex(anchor, RegexOptions.Multiline);
+                                var m = rx.Match(working);
+                                if (!m.Success) return Response.Error($"anchor_replace: anchor not found: {anchor}");
+                                int at = m.Index;
+                                int len = m.Length;
+                                string norm = NormalizeNewlines(replacement);
+                                if (applySequentially)
+                                {
+                                    working = working.Remove(at, len).Insert(at, norm);
+                                    appliedCount++;
+                                }
+                                else
+                                {
+                                    replacements.Add((at, len, norm));
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                return Response.Error($"anchor_replace failed: {ex.Message}");
+                            }
+                            break;
+                        }
+
                         default:
-                            return Response.Error($"Unknown edit mode: '{mode}'. Allowed: replace_class, delete_class, replace_method, delete_method, insert_method.");
+                            return Response.Error($"Unknown edit mode: '{mode}'. Allowed: replace_class, delete_class, replace_method, delete_method, insert_method, anchor_insert.");
                     }
                 }
 
