@@ -27,6 +27,7 @@ def test_no_stdout_output_from_tools():
 def test_no_print_statements_in_codebase():
     """Ensure no stray print/sys.stdout writes remain in server source."""
     offenders = []
+    syntax_errors = []
     for py_file in SRC.rglob("*.py"):
         try:
             text = py_file.read_text(encoding="utf-8", errors="strict")
@@ -36,7 +37,7 @@ def test_no_print_statements_in_codebase():
         try:
             tree = ast.parse(text, filename=str(py_file))
         except SyntaxError:
-            offenders.append(py_file.relative_to(SRC))
+            syntax_errors.append(py_file.relative_to(SRC))
             continue
 
         class StdoutVisitor(ast.NodeVisitor):
@@ -60,4 +61,5 @@ def test_no_print_statements_in_codebase():
         if v.hit:
             offenders.append(py_file.relative_to(SRC))
 
+    assert not syntax_errors, "syntax errors in: " + ", ".join(str(e) for e in syntax_errors)
     assert not offenders, "stdout writes found in: " + ", ".join(str(o) for o in offenders)
