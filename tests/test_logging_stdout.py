@@ -28,6 +28,10 @@ def test_no_print_statements_in_codebase():
     offenders = []
     for py_file in SRC.rglob("*.py"):
         text = py_file.read_text(encoding="utf-8")
-        if re.search(r"^\s*print\(", text, re.MULTILINE):
+        if re.search(r"^\s*print\(", text, re.MULTILINE) or re.search(
+            r"sys\.stdout\.write\(", text
+        ):
             offenders.append(py_file.relative_to(SRC))
-    assert not offenders, f"print statements found in: {offenders}"
+    assert not offenders, (
+        "stdout writes found in: " + ", ".join(str(o) for o in offenders)
+    )

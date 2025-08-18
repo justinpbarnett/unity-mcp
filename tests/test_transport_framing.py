@@ -80,7 +80,8 @@ def start_handshake_enforcing_server():
         ready.set()
         conn, _ = sock.accept()
         # if client sends any data before greeting, disconnect
-        r, _, _ = select.select([conn], [], [], 0.1)
+        # give clients a bit more time to send pre-handshake data before we greet
+        r, _, _ = select.select([conn], [], [], 0.2)
         if r:
             conn.close()
             sock.close()
@@ -105,13 +106,15 @@ def test_handshake_requires_framing():
 def test_small_frame_ping_pong():
     port = start_dummy_server(b"MCP/0.1 FRAMING=1\n", respond_ping=True)
     conn = UnityConnection(host="127.0.0.1", port=port)
-    assert conn.connect() is True
-    assert conn.use_framing is True
-    payload = b'{"type":"ping"}'
-    conn.sock.sendall(struct.pack(">Q", len(payload)) + payload)
-    resp = conn.receive_full_response(conn.sock)
-    assert json.loads(resp.decode("utf-8"))["type"] == "pong"
-    conn.disconnect()
+    try:
+        assert conn.connect() is True
+        assert conn.use_framing is True
+        payload = b'{"type":"ping"}'
+        conn.sock.sendall(struct.pack(">Q", len(payload)) + payload)
+        resp = conn.receive_full_response(conn.sock)
+        assert json.loads(resp.decode("utf-8"))["type"] == "pong"
+    finally:
+        conn.disconnect()
 
 
 def test_unframed_data_disconnect():
@@ -123,7 +126,9 @@ def test_unframed_data_disconnect():
     try:
         data = sock.recv(1024)
         assert data == b""
-    except ConnectionError:
+    except (ConnectionResetError, ConnectionAbortedError):
+        # Some platforms raise instead of returning empty bytes when the
+        # server closes the connection after detecting pre-handshake data.
         pass
     finally:
         sock.close()
