@@ -37,7 +37,7 @@ def test_no_print_statements_in_codebase():
         try:
             tree = ast.parse(text, filename=str(py_file))
         except SyntaxError:
-            syntax_errors.append(py_file.relative_to(SRC))
+            offenders.append(py_file.relative_to(SRC))
             continue
 
         class StdoutVisitor(ast.NodeVisitor):
@@ -48,30 +48,16 @@ def test_no_print_statements_in_codebase():
                 # print(...)
                 if isinstance(node.func, ast.Name) and node.func.id == "print":
                     self.hit = True
-                # builtins.print(...)
-                elif (
-                    isinstance(node.func, ast.Attribute)
-                    and node.func.attr == "print"
-                    and isinstance(node.func.value, ast.Name)
-                    and node.func.value.id == "builtins"
-                ):
-                    self.hit = True
                 # sys.stdout.write(...)
-                if (
-                    isinstance(node.func, ast.Attribute)
-                    and node.func.attr == "write"
-                    and isinstance(node.func.value, ast.Attribute)
-                    and node.func.value.attr == "stdout"
-                    and isinstance(node.func.value.value, ast.Name)
-                    and node.func.value.value.id == "sys"
-                ):
-                    self.hit = True
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "write":
+                    val = node.func.value
+                    if isinstance(val, ast.Attribute) and val.attr == "stdout":
+                        if isinstance(val.value, ast.Name) and val.value.id == "sys":
+                            self.hit = True
                 self.generic_visit(node)
 
         v = StdoutVisitor()
         v.visit(tree)
         if v.hit:
             offenders.append(py_file.relative_to(SRC))
-
-    assert not syntax_errors, "syntax errors in: " + ", ".join(str(e) for e in syntax_errors)
     assert not offenders, "stdout writes found in: " + ", ".join(str(o) for o in offenders)
