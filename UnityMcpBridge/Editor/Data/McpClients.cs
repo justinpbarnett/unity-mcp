@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using UnityMcpBridge.Editor.Models;
+using MCPForUnity.Editor.Models;
 
-namespace UnityMcpBridge.Editor.Data
+namespace MCPForUnity.Editor.Data
 {
     public class McpClients
     {

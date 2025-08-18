@@ -1,8 +1,8 @@
 {
-  "name": "UnityMCPTests.EditMode",
+  "name": "MCPForUnityTests.EditMode",
   "rootNamespace": "",
   "references": [
-    "UnityMcpBridge.Editor",
+    "MCPForUnity.Editor",
     "UnityEngine.TestRunner",
     "UnityEditor.TestRunner"
   ],

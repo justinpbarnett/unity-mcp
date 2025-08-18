@@ -10,11 +10,11 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
-using UnityMcpBridge.Editor.Helpers;
-using UnityMcpBridge.Editor.Models;
-using UnityMcpBridge.Editor.Tools;
+using MCPForUnity.Editor.Helpers;
+using MCPForUnity.Editor.Models;
+using MCPForUnity.Editor.Tools;
 
-namespace UnityMcpBridge.Editor
+namespace MCPForUnity.Editor
 {
     [InitializeOnLoad]
     public static partial class UnityMcpBridge

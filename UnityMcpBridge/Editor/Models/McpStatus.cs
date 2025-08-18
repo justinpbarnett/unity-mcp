@@ -1,4 +1,4 @@
-namespace UnityMcpBridge.Editor.Models
+namespace MCPForUnity.Editor.Models
 {
     // Enum representing the various status states for MCP clients
     public enum McpStatus

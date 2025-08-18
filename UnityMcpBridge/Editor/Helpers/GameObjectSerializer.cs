@@ -6,9 +6,9 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
-using UnityMcpBridge.Runtime.Serialization; // For Converters
+using MCPForUnity.Runtime.Serialization; // For Converters
 
-namespace UnityMcpBridge.Editor.Helpers
+namespace MCPForUnity.Editor.Helpers
 {
     /// <summary>
     /// Handles serialization of GameObjects and Components for MCP responses.

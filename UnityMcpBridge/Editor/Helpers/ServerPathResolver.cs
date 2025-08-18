@@ -3,7 +3,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 
-namespace UnityMcpBridge.Editor.Helpers
+namespace MCPForUnity.Editor.Helpers
 {
     public static class ServerPathResolver
     {

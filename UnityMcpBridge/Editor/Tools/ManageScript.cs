@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
-using UnityMcpBridge.Editor.Helpers;
+using MCPForUnity.Editor.Helpers;
 
 #if USE_ROSLYN
 using Microsoft.CodeAnalysis;
@@ -17,7 +17,7 @@ using UnityEditor.Compilation;
 #endif
 
 
-namespace UnityMcpBridge.Editor.Tools
+namespace MCPForUnity.Editor.Tools
 {
     /// <summary>
     /// Handles CRUD operations for C# scripts within the Unity project.

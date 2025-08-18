@@ -1,9 +1,9 @@
 using System;
 using Newtonsoft.Json;
 using NUnit.Framework;
-using UnityMcpBridge.Editor.Tools;
+using MCPForUnity.Editor.Tools;
 
-namespace UnityMCPTests.EditMode
+namespace MCPForUnityTests.Editor
 {
     public class CommandRegistryTests
     {

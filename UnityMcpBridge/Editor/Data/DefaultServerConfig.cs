@@ -1,6 +1,6 @@
-using UnityMcpBridge.Editor.Models;
+using MCPForUnity.Editor.Models;
 
-namespace UnityMcpBridge.Editor.Data
+namespace MCPForUnity.Editor.Data
 {
     public class DefaultServerConfig : ServerConfig
     {

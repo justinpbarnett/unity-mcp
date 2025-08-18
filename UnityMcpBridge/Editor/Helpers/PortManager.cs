@@ -9,7 +9,7 @@ using System.Threading;
 using Newtonsoft.Json;
 using UnityEngine;
 
-namespace UnityMcpBridge.Editor.Helpers
+namespace MCPForUnity.Editor.Helpers
 {
     /// <summary>
     /// Manages dynamic port allocation and persistent storage for Unity MCP Bridge

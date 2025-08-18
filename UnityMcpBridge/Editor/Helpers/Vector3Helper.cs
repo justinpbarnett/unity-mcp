@@ -1,7 +1,7 @@
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 
-namespace UnityMcpBridge.Editor.Helpers
+namespace MCPForUnity.Editor.Helpers
 {
     /// <summary>
     /// Helper class for Vector3 operations

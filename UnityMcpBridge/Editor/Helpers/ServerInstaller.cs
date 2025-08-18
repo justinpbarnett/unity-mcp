@@ -5,7 +5,7 @@ using System.Text;
 using UnityEditor;
 using UnityEngine;
 
-namespace UnityMcpBridge.Editor.Helpers
+namespace MCPForUnity.Editor.Helpers
 {
     public static class ServerInstaller
     {

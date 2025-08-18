@@ -1,4 +1,4 @@
-namespace UnityMcpBridge.Editor.Models
+namespace MCPForUnity.Editor.Models
 {
     public class McpClient
     {

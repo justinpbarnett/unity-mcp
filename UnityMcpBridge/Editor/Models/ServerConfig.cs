@@ -1,7 +1,7 @@
 using System;
 using Newtonsoft.Json;
 
-namespace UnityMcpBridge.Editor.Models
+namespace MCPForUnity.Editor.Models
 {
     [Serializable]
     public class ServerConfig

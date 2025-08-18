@@ -6,7 +6,7 @@ using System.Linq;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
-using UnityMcpBridge.Editor.Helpers; // For Response class
+using MCPForUnity.Editor.Helpers; // For Response class
 
 #if UNITY_6000_0_OR_NEWER
 using PhysicsMaterialType = UnityEngine.PhysicsMaterial;
@@ -16,7 +16,7 @@ using PhysicsMaterialType = UnityEngine.PhysicMaterial;
 using PhysicsMaterialCombine = UnityEngine.PhysicMaterialCombine;
 #endif
 
-namespace UnityMcpBridge.Editor.Tools
+namespace MCPForUnity.Editor.Tools
 {
     /// <summary>
     /// Handles asset management operations within the Unity project.

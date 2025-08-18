@@ -11,11 +11,11 @@ using System.Runtime.InteropServices;
 using Newtonsoft.Json;
 using UnityEditor;
 using UnityEngine;
-using UnityMcpBridge.Editor.Data;
-using UnityMcpBridge.Editor.Helpers;
-using UnityMcpBridge.Editor.Models;
+using MCPForUnity.Editor.Data;
+using MCPForUnity.Editor.Helpers;
+using MCPForUnity.Editor.Models;
 
-namespace UnityMcpBridge.Editor.Windows
+namespace MCPForUnity.Editor.Windows
 {
     public class UnityMcpEditorWindow : EditorWindow
     {
@@ -304,7 +304,7 @@ namespace UnityMcpBridge.Editor.Windows
                 );
                 if (GUILayout.Button(repairLabel, GUILayout.Width(160), GUILayout.Height(22)))
                 {
-                    bool ok = global::UnityMcpBridge.Editor.Helpers.ServerInstaller.RepairPythonEnvironment();
+                    bool ok = global::MCPForUnity.Editor.Helpers.ServerInstaller.RepairPythonEnvironment();
                     if (ok)
                     {
                         EditorUtility.DisplayDialog("Unity MCP", "Python environment repaired.", "OK");

@@ -1,8 +1,8 @@
 {
-    "name": "UnityMcpBridge.Editor",
-    "rootNamespace": "UnityMcpBridge.Editor",
+    "name": "MCPForUnity.Editor",
+    "rootNamespace": "MCPForUnity.Editor",
     "references": [
-        "UnityMcpBridge.Runtime",
+        "MCPForUnity.Runtime",
         "GUID:560b04d1a97f54a46a2660c3cc343a6f" 
     ],
     "includePlatforms": [

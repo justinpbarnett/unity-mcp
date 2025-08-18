@@ -6,9 +6,9 @@ using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEditorInternal;
 using UnityEngine;
-using UnityMcpBridge.Editor.Helpers; // For Response class
+using MCPForUnity.Editor.Helpers; // For Response class
 
-namespace UnityMcpBridge.Editor.Tools
+namespace MCPForUnity.Editor.Tools
 {
     /// <summary>
     /// Handles reading and clearing Unity Editor console log entries.

@@ -6,7 +6,7 @@ using System.Text;
 using System.Runtime.InteropServices;
 using UnityEditor;
 
-namespace UnityMcpBridge.Editor.Helpers
+namespace MCPForUnity.Editor.Helpers
 {
     internal static class ExecPath
     {

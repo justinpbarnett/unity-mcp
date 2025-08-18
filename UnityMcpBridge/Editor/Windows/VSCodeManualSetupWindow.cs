@@ -1,9 +1,9 @@
 using System.Runtime.InteropServices;
 using UnityEditor;
 using UnityEngine;
-using UnityMcpBridge.Editor.Models;
+using MCPForUnity.Editor.Models;
 
-namespace UnityMcpBridge.Editor.Windows
+namespace MCPForUnity.Editor.Windows
 {
     public class VSCodeManualSetupWindow : ManualConfigEditorWindow
     {

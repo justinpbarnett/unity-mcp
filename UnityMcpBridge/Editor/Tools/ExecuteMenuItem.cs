@@ -3,9 +3,9 @@ using System.Collections.Generic; // Added for HashSet
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
-using UnityMcpBridge.Editor.Helpers; // For Response class
+using MCPForUnity.Editor.Helpers; // For Response class
 
-namespace UnityMcpBridge.Editor.Tools
+namespace MCPForUnity.Editor.Tools
 {
     /// <summary>
     /// Handles executing Unity Editor menu items by path.
