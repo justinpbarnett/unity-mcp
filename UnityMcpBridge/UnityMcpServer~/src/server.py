@@ -21,7 +21,7 @@ _unity_connection: UnityConnection = None
 async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
     """Handle server startup and shutdown."""
     global _unity_connection
-    logger.info("Unity MCP Server starting up")
+    logger.info("MCP for Unity Server starting up")
     try:
         _unity_connection = get_unity_connection()
         logger.info("Connected to Unity on startup")
@@ -36,7 +36,7 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
         if _unity_connection:
             _unity_connection.disconnect()
             _unity_connection = None
-        logger.info("Unity MCP Server shut down")
+        logger.info("MCP for Unity Server shut down")
 
 # Initialize MCP server
 mcp = FastMCP(
@@ -52,9 +52,9 @@ register_all_tools(mcp)
 
 @mcp.prompt()
 def asset_creation_strategy() -> str:
-    """Guide for discovering and using Unity MCP tools effectively."""
+    """Guide for discovering and using MCP for Unity tools effectively."""
     return (
-        "Available Unity MCP Server Tools:\\n\\n"
+        "Available MCP for Unity Server Tools:\\n\\n"
         "- `manage_editor`: Controls editor state and queries info.\\n"
         "- `execute_menu_item`: Executes Unity Editor menu items by path.\\n"
         "- `read_console`: Reads or clears Unity console messages, with filtering options.\\n"

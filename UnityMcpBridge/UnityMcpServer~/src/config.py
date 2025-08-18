@@ -1,5 +1,5 @@
 """
-Configuration settings for the Unity MCP Server.
+Configuration settings for the MCP for Unity Server.
 This file contains all configurable parameters for the server.
 """
 

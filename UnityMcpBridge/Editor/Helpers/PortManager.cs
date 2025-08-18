@@ -12,7 +12,7 @@ using UnityEngine;
 namespace MCPForUnity.Editor.Helpers
 {
     /// <summary>
-    /// Manages dynamic port allocation and persistent storage for Unity MCP Bridge
+    /// Manages dynamic port allocation and persistent storage for MCP for Unity
     /// </summary>
     public static class PortManager
     {
@@ -131,21 +131,21 @@ namespace MCPForUnity.Editor.Helpers
         }
 
         /// <summary>
-        /// Check if a port is currently being used by Unity MCP Bridge
+        /// Check if a port is currently being used by MCP for Unity
         /// This helps avoid unnecessary port changes when Unity itself is using the port
         /// </summary>
         /// <param name="port">Port to check</param>
-        /// <returns>True if port appears to be used by Unity MCP</returns>
+        /// <returns>True if port appears to be used by MCP for Unity</returns>
         public static bool IsPortUsedByUnityMcp(int port)
         {
             try
             {
-                // Try to make a quick connection to see if it's a Unity MCP server
+                // Try to make a quick connection to see if it's an MCP for Unity server
                 using var client = new TcpClient();
                 var connectTask = client.ConnectAsync(IPAddress.Loopback, port);
                 if (connectTask.Wait(100)) // 100ms timeout
                 {
-                    // If connection succeeded, it's likely the Unity MCP server
+                    // If connection succeeded, it's likely the MCP for Unity server
                     return client.Connected;
                 }
                 return false;

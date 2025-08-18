@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generic helper to switch the Unity MCP package source in a Unity project's
+Generic helper to switch the MCP for Unity package source in a Unity project's
 Packages/manifest.json.  This is useful for switching between upstream and local repos while working on the MCP.
 
 Usage:
@@ -109,7 +109,7 @@ def build_options(repo_root: pathlib.Path, branch: str, origin_https: str):
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Switch Unity MCP package source")
+    p = argparse.ArgumentParser(description="Switch MCP for Unity package source")
     p.add_argument("--manifest", help="Path to Packages/manifest.json")
     p.add_argument("--repo", help="Path to unity-mcp repo root (for local file option)")
     p.add_argument("--choice", choices=["1", "2", "3"], help="Pick option non-interactively")

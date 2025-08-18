@@ -1,3 +1,3 @@
 """
-Unity MCP Server package.
+MCP for Unity Server package.
 """ 
