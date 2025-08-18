@@ -483,11 +483,12 @@ namespace UnityMcpBridge.Editor.Tools
             try { original = File.ReadAllText(fullPath); }
             catch (Exception ex) { return Response.Error($"Failed to read script: {ex.Message}"); }
 
+            // Require precondition to avoid drift on large files
             string currentSha = ComputeSha256(original);
-            if (!string.IsNullOrEmpty(preconditionSha256) && !preconditionSha256.Equals(currentSha, StringComparison.OrdinalIgnoreCase))
-            {
+            if (string.IsNullOrEmpty(preconditionSha256))
+                return Response.Error("precondition_required", new { status = "precondition_required", current_sha256 = currentSha });
+            if (!preconditionSha256.Equals(currentSha, StringComparison.OrdinalIgnoreCase))
                 return Response.Error("stale_file", new { status = "stale_file", expected_sha256 = preconditionSha256, current_sha256 = currentSha });
-            }
 
             // Convert edits to absolute index ranges
             var spans = new List<(int start, int end, string text)>();
@@ -517,6 +518,59 @@ namespace UnityMcpBridge.Editor.Tools
                 catch (Exception ex)
                 {
                     return Response.Error($"Invalid edit payload: {ex.Message}");
+                }
+            }
+
+            // Header guard: refuse edits that touch before the first 'using ' directive (after optional BOM) to prevent file corruption
+            int headerBoundary = 0;
+            if (original.Length > 0 && original[0] == '\uFEFF') headerBoundary = 1; // skip BOM
+            // Find first top-level using (very simple scan of start of file)
+            var mUsing = System.Text.RegularExpressions.Regex.Match(original, @"(?m)^(?:\uFEFF)?using\s+\w+", System.Text.RegularExpressions.RegexOptions.None);
+            if (mUsing.Success)
+                headerBoundary = Math.Min(Math.Max(headerBoundary, mUsing.Index), original.Length);
+            foreach (var sp in spans)
+            {
+                if (sp.start < headerBoundary)
+                {
+                    return Response.Error("header_guard", new { status = "header_guard", hint = "Refusing to edit before the first 'using'. Use anchor_insert near a method or a structured edit." });
+                }
+            }
+
+            // Attempt auto-upgrade: if a single edit targets a method header/body, re-route as structured replace_method
+            if (spans.Count == 1)
+            {
+                var sp = spans[0];
+                // Heuristic: around the start of the edit, try to match a method header in original
+                int searchStart = Math.Max(0, sp.start - 200);
+                int searchEnd = Math.Min(original.Length, sp.start + 200);
+                string slice = original.Substring(searchStart, searchEnd - searchStart);
+                var rx = new System.Text.RegularExpressions.Regex(@"(?m)^[\t ]*(?:\[[^\]]+\][\t ]*)*[\t ]*(?:public|private|protected|internal|static|virtual|override|sealed|async|extern|unsafe|new|partial)[\s\S]*?\b([A-Za-z_][A-Za-z0-9_]*)\s*\(");
+                var mh = rx.Match(slice);
+                if (mh.Success)
+                {
+                    string methodName = mh.Groups[1].Value;
+                    // Find class span containing the edit
+                    if (TryComputeClassSpan(original, name, null, out var clsStart, out var clsLen, out _))
+                    {
+                        if (TryComputeMethodSpan(original, clsStart, clsLen, methodName, null, null, null, out var mStart, out var mLen, out _))
+                        {
+                            // If the edit overlaps the method span significantly, treat as replace_method
+                            if (sp.start <= mStart + 2 && sp.end >= mStart + 1)
+                            {
+                                var structEdits = new JArray();
+                                var op = new JObject
+                                {
+                                    ["mode"] = "replace_method",
+                                    ["className"] = name,
+                                    ["methodName"] = methodName,
+                                    ["replacement"] = original.Remove(sp.start, sp.end - sp.start).Insert(sp.start, sp.text ?? string.Empty).Substring(mStart, (sp.text ?? string.Empty).Length + (sp.start - mStart) + (mLen - (sp.end - mStart)))
+                                };
+                                structEdits.Add(op);
+                                // Reuse structured path
+                                return EditScript(fullPath, relativePath, name, structEdits, new JObject{ ["refresh"] = "immediate", ["validate"] = "standard" });
+                            }
+                        }
+                    }
                 }
             }
 
@@ -952,6 +1006,9 @@ namespace UnityMcpBridge.Editor.Tools
                             string afterParameters = op.Value<string>("afterParametersSignature");
                             string afterAttributesContains = op.Value<string>("afterAttributesContains");
                             string snippet = ExtractReplacement(op);
+                            // Harden: refuse empty replacement for inserts
+                            if (snippet == null || snippet.Trim().Length == 0)
+                                return Response.Error("insert_method requires a non-empty 'replacement' text.");
 
                             if (string.IsNullOrWhiteSpace(className)) return Response.Error("insert_method requires 'className'.");
                             if (snippet == null) return Response.Error("insert_method requires 'replacement' (inline or base64) containing a full method declaration.");
@@ -1239,7 +1296,23 @@ namespace UnityMcpBridge.Editor.Tools
             // 1) Find the method header using a stricter regex (allows optional attributes above)
             string rtPattern = string.IsNullOrEmpty(returnType) ? @"[^\s]+" : Regex.Escape(returnType).Replace("\\ ", "\\s+");
             string namePattern = Regex.Escape(methodName);
-            string paramsPattern = string.IsNullOrEmpty(parametersSignature) ? @"[\s\S]*?" : Regex.Escape(parametersSignature);
+            // If a parametersSignature is provided, it may include surrounding parentheses. Strip them so
+            // we can safely embed the signature inside our own parenthesis group without duplicating.
+            string paramsPattern;
+            if (string.IsNullOrEmpty(parametersSignature))
+            {
+                paramsPattern = @"[\s\S]*?"; // permissive when not specified
+            }
+            else
+            {
+                string ps = parametersSignature.Trim();
+                if (ps.StartsWith("(") && ps.EndsWith(")") && ps.Length >= 2)
+                {
+                    ps = ps.Substring(1, ps.Length - 2);
+                }
+                // Escape literal text of the signature
+                paramsPattern = Regex.Escape(ps);
+            }
             string pattern =
                 @"(?m)^[\t ]*(?:\[[^\]]+\][\t ]*)*[\t ]*" +
                 @"(?:(?:public|private|protected|internal|static|virtual|override|sealed|async|extern|unsafe|new|partial|readonly|volatile|event|abstract|ref|in|out)\s+)*" +

@@ -147,7 +147,6 @@ if hasattr(mcp, "resource") and hasattr(getattr(mcp, "resource"), "read"):
             return {"mimeType": "text/plain", "text": text, "metadata": {"sha256": sha}}
         except Exception as e:
             return {"mimeType": "text/plain", "text": f"Error reading resource: {e}"}
- af56d70 (Claude Desktop: write BOM-free config to macOS path; dual-path fallback; add uv -q for quieter stdio; MCP server: compatibility guards for capabilities/resource decorators and indentation fix; ManageScript: shadow var fix; robust mac config path.)
 
 # Run the server
 if __name__ == "__main__":

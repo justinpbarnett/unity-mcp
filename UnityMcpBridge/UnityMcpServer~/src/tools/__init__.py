@@ -8,6 +8,7 @@ from .manage_asset import register_manage_asset_tools
 from .manage_shader import register_manage_shader_tools
 from .read_console import register_read_console_tools
 from .execute_menu_item import register_execute_menu_item_tools
+from .resource_tools import register_resource_tools
 
 logger = logging.getLogger("unity-mcp-server")
 
@@ -24,4 +25,6 @@ def register_all_tools(mcp):
     register_manage_shader_tools(mcp)
     register_read_console_tools(mcp)
     register_execute_menu_item_tools(mcp)
+    # Expose resource wrappers as normal tools so IDEs without resources primitive can use them
+    register_resource_tools(mcp)
     logger.info("Unity MCP Server tool registration complete.")
