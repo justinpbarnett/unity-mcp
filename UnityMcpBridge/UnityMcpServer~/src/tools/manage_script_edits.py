@@ -143,6 +143,34 @@ def _normalize_script_locator(name: str, path: str) -> Tuple[str, str]:
     return base_name, (p or "Assets")
 
 
+def _with_norm(resp: Dict[str, Any] | Any, edits: List[Dict[str, Any]], routing: str | None = None) -> Dict[str, Any] | Any:
+    if not isinstance(resp, dict):
+        return resp
+    data = resp.setdefault("data", {})
+    data.setdefault("normalizedEdits", edits)
+    if routing:
+        data["routing"] = routing
+    return resp
+
+
+def _err(code: str, message: str, *, expected: Dict[str, Any] | None = None, rewrite: Dict[str, Any] | None = None,
+         normalized: List[Dict[str, Any]] | None = None, routing: str | None = None, extra: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {"success": False, "code": code, "message": message}
+    data: Dict[str, Any] = {}
+    if expected:
+        data["expected"] = expected
+    if rewrite:
+        data["rewrite_suggestion"] = rewrite
+    if normalized is not None:
+        data["normalizedEdits"] = normalized
+    if routing:
+        data["routing"] = routing
+    if extra:
+        data.update(extra)
+    if data:
+        payload["data"] = data
+    return payload
+
 # Natural-language parsing removed; clients should send structured edits.
 
 
@@ -297,7 +325,7 @@ def register_manage_script_edits_tools(mcp: FastMCP):
 
         # Validate required fields and produce machine-parsable hints
         def error_with_hint(message: str, expected: Dict[str, Any], suggestion: Dict[str, Any]) -> Dict[str, Any]:
-            return {"success": False, "message": message, "expected": expected, "rewrite_suggestion": suggestion}
+            return _err("missing_field", message, expected=expected, rewrite=suggestion, normalized=normalized_for_echo)
 
         for e in edits or []:
             op = e.get("op", "")
@@ -355,29 +383,32 @@ def register_manage_script_edits_tools(mcp: FastMCP):
                         {"edits[0].text": "/* comment */\n"}
                     )
 
-        for e in edits or []:
-            op = (e.get("op") or e.get("operation") or e.get("type") or e.get("mode") or "").strip().lower()
-            if op in ("replace_class", "delete_class", "replace_method", "delete_method", "insert_method", "anchor_insert", "anchor_delete", "anchor_replace"):
-                # Default applyMode to sequential if mixing insert + replace in the same batch
-                ops_in_batch = { (x.get("op") or "").lower() for x in edits or [] }
-                options = dict(options or {})
-                if "insert_method" in ops_in_batch and "replace_method" in ops_in_batch and "applyMode" not in options:
-                    options["applyMode"] = "sequential"
+        # Decide routing: structured vs text vs mixed
+        STRUCT = {"replace_class","delete_class","replace_method","delete_method","insert_method","anchor_insert","anchor_delete","anchor_replace"}
+        TEXT = {"prepend","append","replace_range","regex_replace","anchor_insert"}
+        ops_set = { (e.get("op") or "").lower() for e in edits or [] }
+        all_struct = ops_set.issubset(STRUCT)
+        all_text = ops_set.issubset(TEXT)
+        mixed = not (all_struct or all_text)
 
-                params: Dict[str, Any] = {
-                    "action": "edit",
-                    "name": name,
-                    "path": path,
-                    "namespace": namespace,
-                    "scriptType": script_type,
-                    "edits": edits,
-                }
-                if options is not None:
-                    params["options"] = options
-                resp = send_command_with_retry("manage_script", params)
-                if isinstance(resp, dict):
-                    resp.setdefault("data", {})["normalizedEdits"] = normalized_for_echo
-                return resp if isinstance(resp, dict) else {"success": False, "message": str(resp)}
+        # If everything is structured (method/class/anchor ops), forward directly to Unity's structured editor.
+        if all_struct:
+            opts2 = dict(options or {})
+            # Be conservative: when multiple structured ops are present, ensure deterministic order
+            if len(edits or []) > 1:
+                opts2.setdefault("applyMode", "sequential")
+            opts2.setdefault("refresh", "immediate")
+            params_struct: Dict[str, Any] = {
+                "action": "edit",
+                "name": name,
+                "path": path,
+                "namespace": namespace,
+                "scriptType": script_type,
+                "edits": edits,
+                "options": opts2,
+            }
+            resp_struct = send_command_with_retry("manage_script", params_struct)
+            return _with_norm(resp_struct if isinstance(resp_struct, dict) else {"success": False, "message": str(resp_struct)}, normalized_for_echo, routing="structured")
 
         # 1) read from Unity
         read_resp = send_command_with_retry("manage_script", {
@@ -399,6 +430,104 @@ def register_manage_script_edits_tools(mcp: FastMCP):
 
         # Optional preview/dry-run: apply locally and return diff without writing
         preview = bool((options or {}).get("preview"))
+
+        # If we have a mixed batch (TEXT + STRUCT), apply text first with precondition, then structured
+        if mixed:
+            text_edits = [e for e in edits or [] if (e.get("op") or "").lower() in TEXT]
+            struct_edits = [e for e in edits or [] if (e.get("op") or "").lower() in STRUCT and (e.get("op") or "").lower() not in {"anchor_insert"}]
+            try:
+                current_text = contents
+                def line_col_from_index(idx: int) -> Tuple[int, int]:
+                    line = current_text.count("\n", 0, idx) + 1
+                    last_nl = current_text.rfind("\n", 0, idx)
+                    col = (idx - (last_nl + 1)) + 1 if last_nl >= 0 else idx + 1
+                    return line, col
+
+                at_edits: List[Dict[str, Any]] = []
+                import re as _re
+                for e in text_edits:
+                    opx = (e.get("op") or e.get("operation") or e.get("type") or e.get("mode") or "").strip().lower()
+                    text_field = e.get("text") or e.get("insert") or e.get("content") or e.get("replacement") or ""
+                    if opx == "anchor_insert":
+                        anchor = e.get("anchor") or ""
+                        position = (e.get("position") or "before").lower()
+                        m = _re.search(anchor, current_text, _re.MULTILINE)
+                        if not m:
+                            return _with_norm({"success": False, "code": "anchor_not_found", "message": f"anchor not found: {anchor}"}, normalized_for_echo, routing="mixed/text-first")
+                        idx = m.start() if position == "before" else m.end()
+                        sl, sc = line_col_from_index(idx)
+                        at_edits.append({"startLine": sl, "startCol": sc, "endLine": sl, "endCol": sc, "newText": text_field})
+                        current_text = current_text[:idx] + text_field + current_text[idx:]
+                    elif opx == "replace_range":
+                        if all(k in e for k in ("startLine","startCol","endLine","endCol")):
+                            at_edits.append({
+                                "startLine": int(e.get("startLine", 1)),
+                                "startCol": int(e.get("startCol", 1)),
+                                "endLine": int(e.get("endLine", 1)),
+                                "endCol": int(e.get("endCol", 1)),
+                                "newText": text_field
+                            })
+                        else:
+                            return _with_norm(_err("missing_field", "replace_range requires startLine/startCol/endLine/endCol", normalized=normalized_for_echo, routing="mixed/text-first"), normalized_for_echo, routing="mixed/text-first")
+                    elif opx == "regex_replace":
+                        pattern = e.get("pattern") or ""
+                        m = _re.search(pattern, current_text, _re.MULTILINE)
+                        if not m:
+                            continue
+                        sl, sc = line_col_from_index(m.start())
+                        el, ec = line_col_from_index(m.end())
+                        at_edits.append({"startLine": sl, "startCol": sc, "endLine": el, "endCol": ec, "newText": text_field})
+                        current_text = current_text[:m.start()] + text_field + current_text[m.end():]
+                    elif opx in ("prepend","append"):
+                        if opx == "prepend":
+                            sl, sc = 1, 1
+                            at_edits.append({"startLine": sl, "startCol": sc, "endLine": sl, "endCol": sc, "newText": text_field})
+                            current_text = text_field + current_text
+                        else:
+                            lines = current_text.splitlines(keepends=True)
+                            sl = len(lines) + (0 if current_text.endswith("\n") else 1)
+                            sc = 1
+                            at_edits.append({"startLine": sl, "startCol": sc, "endLine": sl, "endCol": sc, "newText": ("\n" if not current_text.endswith("\n") else "") + text_field})
+                            current_text = current_text + ("\n" if not current_text.endswith("\n") else "") + text_field
+                    else:
+                        return _with_norm(_err("unknown_op", f"Unsupported text edit op: {opx}", normalized=normalized_for_echo, routing="mixed/text-first"), normalized_for_echo, routing="mixed/text-first")
+
+                import hashlib
+                sha = hashlib.sha256(contents.encode("utf-8")).hexdigest()
+                if at_edits:
+                    params_text: Dict[str, Any] = {
+                        "action": "apply_text_edits",
+                        "name": name,
+                        "path": path,
+                        "namespace": namespace,
+                        "scriptType": script_type,
+                        "edits": at_edits,
+                        "precondition_sha256": sha,
+                        "options": {"refresh": "immediate", "validate": (options or {}).get("validate", "standard")}
+                    }
+                    resp_text = send_command_with_retry("manage_script", params_text)
+                    if not (isinstance(resp_text, dict) and resp_text.get("success")):
+                        return _with_norm(resp_text if isinstance(resp_text, dict) else {"success": False, "message": str(resp_text)}, normalized_for_echo, routing="mixed/text-first")
+            except Exception as e:
+                return _with_norm({"success": False, "message": f"Text edit conversion failed: {e}"}, normalized_for_echo, routing="mixed/text-first")
+
+            if struct_edits:
+                opts2 = dict(options or {})
+                opts2.setdefault("applyMode", "sequential")
+                opts2.setdefault("refresh", "immediate")
+                params_struct: Dict[str, Any] = {
+                    "action": "edit",
+                    "name": name,
+                    "path": path,
+                    "namespace": namespace,
+                    "scriptType": script_type,
+                    "edits": struct_edits,
+                    "options": opts2
+                }
+                resp_struct = send_command_with_retry("manage_script", params_struct)
+                return _with_norm(resp_struct if isinstance(resp_struct, dict) else {"success": False, "message": str(resp_struct)}, normalized_for_echo, routing="mixed/text-first")
+
+            return _with_norm({"success": True, "message": "Applied text edits (no structured ops)"}, normalized_for_echo, routing="mixed/text-first")
 
         # If the edits are text-ops, prefer sending them to Unity's apply_text_edits with precondition
         # so header guards and validation run on the C# side.
@@ -427,7 +556,7 @@ def register_manage_script_edits_tools(mcp: FastMCP):
                         position = (e.get("position") or "before").lower()
                         m = _re.search(anchor, current_text, _re.MULTILINE)
                         if not m:
-                            return {"success": False, "message": f"anchor not found: {anchor}"}
+                            return _with_norm({"success": False, "code": "anchor_not_found", "message": f"anchor not found: {anchor}"}, normalized_for_echo, routing="text")
                         idx = m.start() if position == "before" else m.end()
                         sl, sc = line_col_from_index(idx)
                         at_edits.append({
@@ -451,7 +580,7 @@ def register_manage_script_edits_tools(mcp: FastMCP):
                             })
                         else:
                             # If only indices provided, skip (we don't support index-based here)
-                            return {"success": False, "message": "replace_range requires startLine/startCol/endLine/endCol"}
+                            return _with_norm({"success": False, "code": "missing_field", "message": "replace_range requires startLine/startCol/endLine/endCol"}, normalized_for_echo, routing="text")
                     elif op == "regex_replace":
                         pattern = e.get("pattern") or ""
                         repl = text_field
@@ -469,10 +598,10 @@ def register_manage_script_edits_tools(mcp: FastMCP):
                         })
                         current_text = current_text[:m.start()] + repl + current_text[m.end():]
                     else:
-                        return {"success": False, "message": f"Unsupported text edit op for server-side apply_text_edits: {op}"}
+                        return _with_norm({"success": False, "code": "unsupported_op", "message": f"Unsupported text edit op for server-side apply_text_edits: {op}"}, normalized_for_echo, routing="text")
 
                 if not at_edits:
-                    return {"success": False, "message": "No applicable text edit spans computed (anchor not found or zero-length)."}
+                    return _with_norm({"success": False, "code": "no_spans", "message": "No applicable text edit spans computed (anchor not found or zero-length)."}, normalized_for_echo, routing="text")
 
                 # Send to Unity with precondition SHA to enforce guards and immediate refresh
                 import hashlib
@@ -491,28 +620,10 @@ def register_manage_script_edits_tools(mcp: FastMCP):
                     }
                 }
                 resp = send_command_with_retry("manage_script", params)
-                if isinstance(resp, dict):
-                    resp.setdefault("data", {})["normalizedEdits"] = normalized_for_echo
-                return resp if isinstance(resp, dict) else {"success": False, "message": str(resp)}
+                return _with_norm(resp if isinstance(resp, dict) else {"success": False, "message": str(resp)}, normalized_for_echo, routing="text")
             except Exception as e:
-                return {"success": False, "message": f"Edit conversion failed: {e}"}
+                return _with_norm({"success": False, "code": "conversion_failed", "message": f"Edit conversion failed: {e}"}, normalized_for_echo, routing="text")
 
-        # If we have anchor_* only (structured), forward to ManageScript.EditScript to avoid raw text path
-        if text_ops.issubset({"anchor_insert", "anchor_delete", "anchor_replace"}):
-            params: Dict[str, Any] = {
-                "action": "edit",
-                "name": name,
-                "path": path,
-                "namespace": namespace,
-                "scriptType": script_type,
-                "edits": edits,
-                "options": {"refresh": "immediate", "validate": (options or {}).get("validate", "standard")}
-            }
-            resp2 = send_command_with_retry("manage_script", params)
-            if isinstance(resp2, dict):
-                resp2.setdefault("data", {})["normalizedEdits"] = normalized_for_echo
-            return resp2 if isinstance(resp2, dict) else {"success": False, "message": str(resp2)}
-        
         # For regex_replace on large files, support preview/confirm
         if "regex_replace" in text_ops and not (options or {}).get("confirm"):
             try:

@@ -104,6 +104,10 @@ def register_resource_tools(mcp: FastMCP) -> None:
                 if len(matches) >= max(1, limit):
                     break
 
+            # Always include the canonical spec resource so NL clients can discover it
+            if "unity://spec/script-edits" not in matches:
+                matches.append("unity://spec/script-edits")
+
             return {"success": True, "data": {"uris": matches, "count": len(matches)}}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -124,6 +128,68 @@ def register_resource_tools(mcp: FastMCP) -> None:
         One of line window (start_line/line_count) or head_bytes can be used to limit size.
         """
         try:
+            # Serve the canonical spec directly when requested
+            if uri == "unity://spec/script-edits":
+                spec_json = (
+                    '{\n'
+                    '  "name": "Unity MCP — Script Edits v1",\n'
+                    '  "target_tool": "script_apply_edits",\n'
+                    '  "canonical_rules": {\n'
+                    '    "always_use": ["op","className","methodName","replacement","afterMethodName","beforeMethodName"],\n'
+                    '    "never_use": ["new_method","anchor_method","content","newText"],\n'
+                    '    "defaults": {\n'
+                    '      "className": "\u2190 server will default to \'name\' when omitted",\n'
+                    '      "position": "end"\n'
+                    '    }\n'
+                    '  },\n'
+                    '  "ops": [\n'
+                    '    {"op":"replace_method","required":["className","methodName","replacement"],"optional":["returnType","parametersSignature","attributesContains"]},\n'
+                    '    {"op":"insert_method","required":["className","replacement"],"position":{"enum":["start","end","after","before"],"after_requires":"afterMethodName","before_requires":"beforeMethodName"}},\n'
+                    '    {"op":"delete_method","required":["className","methodName"]},\n'
+                    '    {"op":"anchor_insert","required":["anchor","text"],"notes":"regex; position=before|after"}\n'
+                    '  ],\n'
+                    '  "apply_text_edits_recipe": {\n'
+                    '    "step1_read": { "tool": "resources/read", "args": {"uri": "unity://path/Assets/Scripts/Interaction/SmartReach.cs"} },\n'
+                    '    "step2_apply": {\n'
+                    '      "tool": "manage_script",\n'
+                    '      "args": {\n'
+                    '        "action": "apply_text_edits",\n'
+                    '        "name": "SmartReach", "path": "Assets/Scripts/Interaction",\n'
+                    '        "edits": [{"startLine": 42, "startCol": 1, "endLine": 42, "endCol": 1, "newText": "[MyAttr]\\n"}],\n'
+                    '        "precondition_sha256": "<sha-from-step1>",\n'
+                    '        "options": {"refresh": "immediate", "validate": "standard"}\n'
+                    '      }\n'
+                    '    },\n'
+                    '    "note": "newText is for apply_text_edits ranges only; use replacement in script_apply_edits ops."\n'
+                    '  },\n'
+                    '  "examples": [\n'
+                    '    {\n'
+                    '      "title": "Replace a method",\n'
+                    '      "args": {\n'
+                    '        "name": "SmartReach",\n'
+                    '        "path": "Assets/Scripts/Interaction",\n'
+                    '        "edits": [\n'
+                    '          {"op":"replace_method","className":"SmartReach","methodName":"HasTarget","replacement":"public bool HasTarget() { return currentTarget != null; }"}\n'
+                    '        ],\n'
+                    '        "options": { "validate": "standard", "refresh": "immediate" }\n'
+                    '      }\n'
+                    '    },\n'
+                    '    {\n'
+                    '      "title": "Insert a method after another",\n'
+                    '      "args": {\n'
+                    '        "name": "SmartReach",\n'
+                    '        "path": "Assets/Scripts/Interaction",\n'
+                    '        "edits": [\n'
+                    '          {"op":"insert_method","className":"SmartReach","replacement":"public void PrintSeries() { Debug.Log(seriesName); }","position":"after","afterMethodName":"GetCurrentTarget"}\n'
+                    '        ]\n'
+                    '      }\n'
+                    '    }\n'
+                    '  ]\n'
+                    '}\n'
+                )
+                sha = hashlib.sha256(spec_json.encode("utf-8")).hexdigest()
+                return {"success": True, "data": {"text": spec_json, "metadata": {"sha256": sha}}}
+
             project = _resolve_project_root(project_root)
             p = _resolve_safe_path_from_uri(uri, project)
             if not p or not p.exists() or not p.is_file():
