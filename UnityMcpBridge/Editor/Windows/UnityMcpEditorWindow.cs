@@ -44,7 +44,7 @@ namespace MCPForUnity.Editor.Windows
         // UI state
         private int selectedClientIndex = 0;
 
-        [MenuItem("Window/Unity MCP")]
+        [MenuItem("Window/MCP for Unity")]
         public static void ShowWindow()
         {
             GetWindow<UnityMcpEditorWindow>("MCP Editor");
@@ -230,7 +230,7 @@ namespace MCPForUnity.Editor.Windows
             
             GUI.Label(
                 new Rect(titleRect.x + 15, titleRect.y + 8, titleRect.width - 30, titleRect.height),
-                "Unity MCP Editor",
+                "MCP for Unity Editor",
                 titleStyle
             );
 
@@ -307,12 +307,12 @@ namespace MCPForUnity.Editor.Windows
                     bool ok = global::MCPForUnity.Editor.Helpers.ServerInstaller.RepairPythonEnvironment();
                     if (ok)
                     {
-                        EditorUtility.DisplayDialog("Unity MCP", "Python environment repaired.", "OK");
+                        EditorUtility.DisplayDialog("MCP for Unity", "Python environment repaired.", "OK");
                         UpdatePythonServerInstallationStatus();
                     }
                     else
                     {
-                        EditorUtility.DisplayDialog("Unity MCP", "Repair failed. Please check Console for details.", "OK");
+                        EditorUtility.DisplayDialog("MCP for Unity", "Repair failed. Please check Console for details.", "OK");
                     }
                 }
             }
@@ -532,7 +532,7 @@ namespace MCPForUnity.Editor.Windows
             }
             catch (Exception e)
             {
-                UnityEngine.Debug.LogWarning($"Unity MCP auto-setup skipped: {e.Message}");
+                UnityEngine.Debug.LogWarning($"MCP for Unity auto-setup skipped: {e.Message}");
             }
         }
 
