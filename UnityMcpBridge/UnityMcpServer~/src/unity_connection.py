@@ -1,13 +1,15 @@
-import socket
+import contextlib
+import errno
 import json
 import logging
+import random
+import socket
 import struct
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
-import time
-import random
-import errno
-from typing import Dict, Any
+from typing import Any, Dict
 from config import config
 from port_discovery import PortDiscovery
 
@@ -30,6 +32,7 @@ class UnityConnection:
         """Set port from discovery if not explicitly provided"""
         if self.port is None:
             self.port = PortDiscovery.discover_unity_port()
+        self._io_lock = threading.Lock()
 
     def connect(self) -> bool:
         """Establish a connection to the Unity Editor."""
@@ -42,20 +45,24 @@ class UnityConnection:
 
             # Strict handshake: require FRAMING=1
             try:
-                self.sock.settimeout(1.0)
+                require_framing = getattr(config, "require_framing", True)
+                self.sock.settimeout(getattr(config, "handshake_timeout", 1.0))
                 greeting = self.sock.recv(256)
                 text = greeting.decode('ascii', errors='ignore') if greeting else ''
                 if 'FRAMING=1' in text:
                     self.use_framing = True
                     logger.debug('Unity MCP handshake received: FRAMING=1 (strict)')
                 else:
-                    try:
-                        msg = b'Unity MCP requires FRAMING=1'
-                        header = struct.pack('>Q', len(msg))
-                        self.sock.sendall(header + msg)
-                    except Exception:
-                        pass
-                    raise ConnectionError(f'Unity MCP requires FRAMING=1, got: {text!r}')
+                    if require_framing:
+                        # Best-effort advisory; peer may ignore if not framed-capable
+                        with contextlib.suppress(Exception):
+                            msg = b'Unity MCP requires FRAMING=1'
+                            header = struct.pack('>Q', len(msg))
+                            self.sock.sendall(header + msg)
+                        raise ConnectionError(f'Unity MCP requires FRAMING=1, got: {text!r}')
+                    else:
+                        self.use_framing = False
+                        logger.warning('Unity MCP handshake missing FRAMING=1; proceeding in legacy mode by configuration')
             finally:
                 self.sock.settimeout(config.connection_timeout)
             return True
@@ -101,9 +108,9 @@ class UnityConnection:
                 payload = self._read_exact(sock, payload_len)
                 logger.info(f"Received framed response ({len(payload)} bytes)")
                 return payload
-            except socket.timeout:
+            except socket.timeout as e:
                 logger.warning("Socket timeout during framed receive")
-                raise Exception("Timeout receiving Unity response")
+                raise TimeoutError("Timeout receiving Unity response") from e
             except Exception as e:
                 logger.error(f"Error during framed receive: {str(e)}")
                 raise
@@ -201,10 +208,9 @@ class UnityConnection:
 
         for attempt in range(attempts + 1):
             try:
-                # Ensure connected (perform handshake each time so framing stays correct)
-                if not self.sock:
-                    if not self.connect():
-                        raise Exception("Could not connect to Unity")
+                # Ensure connected (handshake occurs within connect())
+                if not self.sock and not self.connect():
+                    raise Exception("Could not connect to Unity")
 
                 # Build payload
                 if command_type == 'ping':
@@ -213,31 +219,39 @@ class UnityConnection:
                     command = {"type": command_type, "params": params or {}}
                     payload = json.dumps(command, ensure_ascii=False).encode('utf-8')
 
-                # Send
-                try:
-                    logger.debug(f"send {len(payload)} bytes; mode={'framed' if self.use_framing else 'legacy'}; head={(payload[:32]).decode('utf-8','ignore')}")
-                except Exception:
-                    pass
-                if self.use_framing:
-                    header = struct.pack('>Q', len(payload))
-                    self.sock.sendall(header)
-                    self.sock.sendall(payload)
-                else:
-                    self.sock.sendall(payload)
+                # Send/receive are serialized to protect the shared socket
+                with self._io_lock:
+                    mode = 'framed' if self.use_framing else 'legacy'
+                    with contextlib.suppress(Exception):
+                        logger.debug(
+                            "send %d bytes; mode=%s; head=%s",
+                            len(payload),
+                            mode,
+                            (payload[:32]).decode('utf-8', 'ignore'),
+                        )
+                    if self.use_framing:
+                        header = struct.pack('>Q', len(payload))
+                        self.sock.sendall(header)
+                        self.sock.sendall(payload)
+                    else:
+                        self.sock.sendall(payload)
 
-                # During retry bursts use a short receive timeout
-                if attempt > 0 and last_short_timeout is None:
-                    last_short_timeout = self.sock.gettimeout()
-                    self.sock.settimeout(1.0)
-                response_data = self.receive_full_response(self.sock)
-                try:
-                    logger.debug(f"recv {len(response_data)} bytes; mode={'framed' if self.use_framing else 'legacy'}; head={(response_data[:32]).decode('utf-8','ignore')}")
-                except Exception:
-                    pass
-                # restore steady-state timeout if changed
-                if last_short_timeout is not None:
-                    self.sock.settimeout(config.connection_timeout)
-                    last_short_timeout = None
+                    # During retry bursts use a short receive timeout
+                    if attempt > 0 and last_short_timeout is None:
+                        last_short_timeout = self.sock.gettimeout()
+                        self.sock.settimeout(1.0)
+                    response_data = self.receive_full_response(self.sock)
+                    with contextlib.suppress(Exception):
+                        logger.debug(
+                            "recv %d bytes; mode=%s; head=%s",
+                            len(response_data),
+                            mode,
+                            (response_data[:32]).decode('utf-8', 'ignore'),
+                        )
+                    # restore steady-state timeout if changed
+                    if last_short_timeout is not None:
+                        self.sock.settimeout(last_short_timeout)
+                        last_short_timeout = None
 
                 # Parse
                 if command_type == 'ping':

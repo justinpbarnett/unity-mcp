@@ -129,6 +129,7 @@ def test_unframed_data_disconnect():
     port = start_handshake_enforcing_server()
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect(("127.0.0.1", port))
+    sock.settimeout(1.0)
     sock.sendall(b"BAD")
     time.sleep(0.4)
     try:
