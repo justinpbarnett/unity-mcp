@@ -1,4 +1,4 @@
-import re
+import ast
 from pathlib import Path
 
 import pytest
@@ -13,8 +13,9 @@ candidates = [
 SRC = next((p for p in candidates if p.exists()), None)
 if SRC is None:
     searched = "\n".join(str(p) for p in candidates)
-    raise FileNotFoundError(
-        "Unity MCP server source not found. Tried:\n" + searched
+    pytest.skip(
+        "Unity MCP server source not found. Tried:\n" + searched,
+        allow_module_level=True,
     )
 
 
@@ -24,14 +25,39 @@ def test_no_stdout_output_from_tools():
 
 
 def test_no_print_statements_in_codebase():
-    """Ensure no stray print statements remain in server source."""
+    """Ensure no stray print/sys.stdout writes remain in server source."""
     offenders = []
     for py_file in SRC.rglob("*.py"):
-        text = py_file.read_text(encoding="utf-8")
-        if re.search(r"^\s*print\(", text, re.MULTILINE) or re.search(
-            r"sys\.stdout\.write\(", text
-        ):
+        try:
+            text = py_file.read_text(encoding="utf-8", errors="strict")
+        except UnicodeDecodeError:
+            # Be tolerant of encoding edge cases in source tree
+            text = py_file.read_text(encoding="utf-8", errors="ignore")
+        try:
+            tree = ast.parse(text, filename=str(py_file))
+        except SyntaxError:
             offenders.append(py_file.relative_to(SRC))
-    assert not offenders, (
-        "stdout writes found in: " + ", ".join(str(o) for o in offenders)
-    )
+            continue
+
+        class StdoutVisitor(ast.NodeVisitor):
+            def __init__(self):
+                self.hit = False
+
+            def visit_Call(self, node: ast.Call):
+                # print(...)
+                if isinstance(node.func, ast.Name) and node.func.id == "print":
+                    self.hit = True
+                # sys.stdout.write(...)
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "write":
+                    val = node.func.value
+                    if isinstance(val, ast.Attribute) and val.attr == "stdout":
+                        if isinstance(val.value, ast.Name) and val.value.id == "sys":
+                            self.hit = True
+                self.generic_visit(node)
+
+        v = StdoutVisitor()
+        v.visit(tree)
+        if v.hit:
+            offenders.append(py_file.relative_to(SRC))
+
+    assert not offenders, "stdout writes found in: " + ", ".join(str(o) for o in offenders)

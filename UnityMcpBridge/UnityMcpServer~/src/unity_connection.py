@@ -94,6 +94,8 @@ class UnityConnection:
             try:
                 header = self._read_exact(sock, 8)
                 payload_len = struct.unpack('>Q', header)[0]
+                if payload_len == 0:
+                    raise Exception("Invalid framed length: 0")
                 if payload_len > (64 * 1024 * 1024):
                     raise Exception(f"Invalid framed length: {payload_len}")
                 payload = self._read_exact(sock, payload_len)

@@ -18,8 +18,9 @@ candidates = [
 SRC = next((p for p in candidates if p.exists()), None)
 if SRC is None:
     searched = "\n".join(str(p) for p in candidates)
-    raise FileNotFoundError(
-        "Unity MCP server source not found. Tried:\n" + searched
+    pytest.skip(
+        "Unity MCP server source not found. Tried:\n" + searched,
+        allow_module_level=True,
     )
 sys.path.insert(0, str(SRC))
 
@@ -37,19 +38,25 @@ def start_dummy_server(greeting: bytes, respond_ping: bool = False):
     def _run():
         ready.set()
         conn, _ = sock.accept()
+        conn.settimeout(1.0)
         if greeting:
             conn.sendall(greeting)
         if respond_ping:
             try:
-                header = conn.recv(8)
-                if len(header) == 8:
-                    length = struct.unpack(">Q", header)[0]
-                    payload = b""
-                    while len(payload) < length:
-                        chunk = conn.recv(length - len(payload))
+                # Read exactly n bytes helper
+                def _read_exact(n: int) -> bytes:
+                    buf = b""
+                    while len(buf) < n:
+                        chunk = conn.recv(n - len(buf))
                         if not chunk:
                             break
-                        payload += chunk
+                        buf += chunk
+                    return buf
+
+                header = _read_exact(8)
+                if len(header) == 8:
+                    length = struct.unpack(">Q", header)[0]
+                    payload = _read_exact(length)
                     if payload == b'{"type":"ping"}':
                         resp = b'{"type":"pong"}'
                         conn.sendall(struct.pack(">Q", len(resp)) + resp)
@@ -79,13 +86,14 @@ def start_handshake_enforcing_server():
     def _run():
         ready.set()
         conn, _ = sock.accept()
-        # if client sends any data before greeting, disconnect
-        # give clients a bit more time to send pre-handshake data before we greet
-        r, _, _ = select.select([conn], [], [], 0.2)
-        if r:
-            conn.close()
-            sock.close()
-            return
+        # If client sends any data before greeting, disconnect (poll briefly)
+        deadline = time.time() + 0.5
+        while time.time() < deadline:
+            r, _, _ = select.select([conn], [], [], 0.05)
+            if r:
+                conn.close()
+                sock.close()
+                return
         conn.sendall(b"MCP/0.1 FRAMING=1\n")
         time.sleep(0.1)
         conn.close()
@@ -122,7 +130,7 @@ def test_unframed_data_disconnect():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect(("127.0.0.1", port))
     sock.sendall(b"BAD")
-    time.sleep(0.1)
+    time.sleep(0.4)
     try:
         data = sock.recv(1024)
         assert data == b""
