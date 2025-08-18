@@ -47,7 +47,7 @@ namespace MCPForUnity.Editor.Windows
         [MenuItem("Window/MCP for Unity")]
         public static void ShowWindow()
         {
-            GetWindow<UnityMcpEditorWindow>("MCP Editor");
+            GetWindow<UnityMcpEditorWindow>("MCP for Unity");
         }
 
         private void OnEnable()
