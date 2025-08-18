@@ -37,7 +37,7 @@ def test_no_print_statements_in_codebase():
         try:
             tree = ast.parse(text, filename=str(py_file))
         except SyntaxError:
-            offenders.append(py_file.relative_to(SRC))
+            syntax_errors.append(py_file.relative_to(SRC))
             continue
 
         class StdoutVisitor(ast.NodeVisitor):
@@ -60,4 +60,9 @@ def test_no_print_statements_in_codebase():
         v.visit(tree)
         if v.hit:
             offenders.append(py_file.relative_to(SRC))
+<<<<<<< HEAD
+=======
+
+    assert not syntax_errors, "syntax errors in: " + ", ".join(str(e) for e in syntax_errors)
+>>>>>>> 1a50016 (clarify stdout test failure messaging)
     assert not offenders, "stdout writes found in: " + ", ".join(str(o) for o in offenders)
