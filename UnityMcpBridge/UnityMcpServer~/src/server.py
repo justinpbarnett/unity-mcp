@@ -147,7 +147,6 @@ if hasattr(mcp, "resource") and hasattr(getattr(mcp, "resource"), "read"):
             return {"mimeType": "text/plain", "text": text, "metadata": {"sha256": sha}}
         except Exception as e:
             return {"mimeType": "text/plain", "text": f"Error reading resource: {e}"}
-    
 
 # Run the server
 if __name__ == "__main__":

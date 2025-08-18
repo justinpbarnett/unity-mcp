@@ -229,6 +229,14 @@ def register_manage_script_edits_tools(mcp: FastMCP):
                 e.setdefault("text", "")
                 normalized_edits.append(e)
                 continue
+            if op == "regex_replace" and ("replacement" not in e):
+                # Normalize alternative text fields into 'replacement' for local preview path
+                if "text" in e:
+                    e = dict(e)
+                    e["replacement"] = e.get("text", "")
+                elif "insert" in e or "content" in e:
+                    e = dict(e)
+                    e["replacement"] = e.get("insert") or e.get("content") or ""
             if op == "anchor_insert" and not (e.get("text") or e.get("insert") or e.get("content") or e.get("replacement")):
                 # Upgrade empty insert intent to anchor_delete with guidance
                 e = dict(e)
@@ -426,7 +434,6 @@ def register_manage_script_edits_tools(mcp: FastMCP):
                 return {"success": False, "message": "Preview diff; set options.confirm=true to apply.", "data": {"diff": "\n".join(diff)}}
             except Exception as e:
                 return {"success": False, "message": f"Preview failed: {e}"}
-
         # 2) apply edits locally (only if not text-ops)
         try:
             new_contents = _apply_edits_locally(contents, edits)
