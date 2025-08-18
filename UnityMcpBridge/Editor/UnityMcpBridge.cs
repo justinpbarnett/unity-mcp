@@ -46,7 +46,7 @@ namespace MCPForUnity.Editor
         {
             if (IsDebugEnabled())
             {
-                Debug.Log($"<b><color=#2EA3FF>UNITY-MCP</color></b>: [{stage}]");
+                Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: [{stage}]");
             }
         }
 
@@ -227,7 +227,7 @@ namespace MCPForUnity.Editor
                 // Don't restart if already running on a working port
                 if (isRunning && listener != null)
                 {
-                    Debug.Log($"<b><color=#2EA3FF>UNITY-MCP</color></b>: UnityMcpBridge already running on port {currentUnityPort}");
+                    Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: UnityMcpBridge already running on port {currentUnityPort}");
                     return;
                 }
 
@@ -310,7 +310,7 @@ namespace MCPForUnity.Editor
 
                     isRunning = true;
                     isAutoConnectMode = false;
-                    Debug.Log($"<b><color=#2EA3FF>UNITY-MCP</color></b>: UnityMcpBridge started on port {currentUnityPort}.");
+                    Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: UnityMcpBridge started on port {currentUnityPort}.");
                     Task.Run(ListenerLoop);
                     EditorApplication.update += ProcessCommands;
                     // Write initial heartbeat immediately
@@ -343,7 +343,7 @@ namespace MCPForUnity.Editor
                     listener?.Stop();
                     listener = null;
                     EditorApplication.update -= ProcessCommands;
-                    Debug.Log("<b><color=#2EA3FF>UNITY-MCP</color></b>: UnityMcpBridge stopped.");
+                    Debug.Log("<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: UnityMcpBridge stopped.");
                 }
                 catch (Exception ex)
                 {

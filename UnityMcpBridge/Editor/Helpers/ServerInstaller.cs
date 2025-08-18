@@ -246,7 +246,7 @@ namespace MCPForUnity.Editor.Helpers
                     return false;
                 }
 
-                Debug.Log("<b><color=#2EA3FF>UNITY-MCP</color></b>: Python environment repaired successfully.");
+                Debug.Log("<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: Python environment repaired successfully.");
                 return true;
             }
             catch (Exception ex)

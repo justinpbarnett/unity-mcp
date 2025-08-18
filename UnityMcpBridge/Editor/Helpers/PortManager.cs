@@ -48,7 +48,7 @@ namespace MCPForUnity.Editor.Helpers
                 string.Equals(storedConfig.project_path ?? string.Empty, Application.dataPath ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
                 IsPortAvailable(storedConfig.unity_port))
             {
-                if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>UNITY-MCP</color></b>: Using stored port {storedConfig.unity_port} for current project");
+                if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: Using stored port {storedConfig.unity_port} for current project");
                 return storedConfig.unity_port;
             }
 
@@ -57,7 +57,7 @@ namespace MCPForUnity.Editor.Helpers
             {
                 if (WaitForPortRelease(storedConfig.unity_port, 1500))
                 {
-                    if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>UNITY-MCP</color></b>: Stored port {storedConfig.unity_port} became available after short wait");
+                    if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: Stored port {storedConfig.unity_port} became available after short wait");
                     return storedConfig.unity_port;
                 }
                 // Prefer sticking to the same port; let the caller handle bind retries/fallbacks
@@ -78,7 +78,7 @@ namespace MCPForUnity.Editor.Helpers
         {
             int newPort = FindAvailablePort();
             SavePort(newPort);
-            if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>UNITY-MCP</color></b>: Discovered and saved new port: {newPort}");
+            if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: Discovered and saved new port: {newPort}");
             return newPort;
         }
 
@@ -91,18 +91,18 @@ namespace MCPForUnity.Editor.Helpers
             // Always try default port first
             if (IsPortAvailable(DefaultPort))
             {
-                if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>UNITY-MCP</color></b>: Using default port {DefaultPort}");
+                if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: Using default port {DefaultPort}");
                 return DefaultPort;
             }
 
-            if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>UNITY-MCP</color></b>: Default port {DefaultPort} is in use, searching for alternative...");
+            if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: Default port {DefaultPort} is in use, searching for alternative...");
 
             // Search for alternatives
             for (int port = DefaultPort + 1; port < DefaultPort + MaxPortAttempts; port++)
             {
                 if (IsPortAvailable(port))
                 {
-                    if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>UNITY-MCP</color></b>: Found available port {port}");
+                    if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: Found available port {port}");
                     return port;
                 }
             }
@@ -211,7 +211,7 @@ namespace MCPForUnity.Editor.Helpers
                 string legacy = Path.Combine(GetRegistryDirectory(), RegistryFileName);
                 File.WriteAllText(legacy, json);
 
-                if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>UNITY-MCP</color></b>: Saved port {port} to storage");
+                if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: Saved port {port} to storage");
             }
             catch (Exception ex)
             {

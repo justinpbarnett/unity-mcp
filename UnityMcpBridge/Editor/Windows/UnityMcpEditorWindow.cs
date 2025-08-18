@@ -1623,7 +1623,7 @@ namespace MCPForUnity.Editor.Windows
                     var existingClient = mcpClients.clients.FirstOrDefault(c => c.mcpType == McpTypes.ClaudeCode);
                     if (existingClient != null) CheckClaudeCodeConfiguration(existingClient);
                     Repaint();
-                    UnityEngine.Debug.Log("<b><color=#2EA3FF>UNITY-MCP</color></b>: UnityMCP already registered with Claude Code.");
+                    UnityEngine.Debug.Log("<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: UnityMCP already registered with Claude Code.");
                 }
                 else
                 {
@@ -1636,7 +1636,7 @@ namespace MCPForUnity.Editor.Windows
             var claudeClient = mcpClients.clients.FirstOrDefault(c => c.mcpType == McpTypes.ClaudeCode);
             if (claudeClient != null) CheckClaudeCodeConfiguration(claudeClient);
             Repaint();
-            UnityEngine.Debug.Log("<b><color=#2EA3FF>UNITY-MCP</color></b>: Registered with Claude Code.");
+            UnityEngine.Debug.Log("<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: Registered with Claude Code.");
         }
 
         private void UnregisterWithClaudeCode()
