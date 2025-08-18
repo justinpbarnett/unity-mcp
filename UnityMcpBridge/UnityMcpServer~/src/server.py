@@ -81,18 +81,19 @@ register_all_tools(mcp)
 def asset_creation_strategy() -> str:
     """Guide for discovering and using Unity MCP tools effectively."""
     return (
-        "Available Unity MCP Server Tools:\\n\\n"
-        "- `manage_editor`: Controls editor state and queries info.\\n"
-        "- `execute_menu_item`: Executes Unity Editor menu items by path.\\n"
-        "- `read_console`: Reads or clears Unity console messages, with filtering options.\\n"
-        "- `manage_scene`: Manages scenes.\\n"
-        "- `manage_gameobject`: Manages GameObjects in the scene.\\n"
-        "- `manage_script`: Manages C# script files.\\n"
-        "- `manage_asset`: Manages prefabs and assets.\\n"
-        "- `manage_shader`: Manages shaders.\\n\\n"
-        "Tips:\\n"
-        "- Create prefabs for reusable GameObjects.\\n"
-        "- Always include a camera and main light in your scenes.\\n"
+        "Available Unity MCP Server Tools:\n\n"
+        "- `manage_editor`: Controls editor state and queries info.\n"
+        "- `execute_menu_item`: Executes Unity Editor menu items by path.\n"
+        "- `read_console`: Reads or clears Unity console messages, with filtering options.\n"
+        "- `manage_scene`: Manages scenes.\n"
+        "- `manage_gameobject`: Manages GameObjects in the scene.\n"
+        "- `manage_script`: Manages C# script files.\n"
+        "- `manage_asset`: Manages prefabs and assets.\n"
+        "- `manage_shader`: Manages shaders.\n\n"
+        "Tips:\n"
+        "- Prefer structured script edits over raw text ranges.\n"
+        "- For script edits, common aliases are accepted: class_name→className; method_name/target/method→methodName; new_method/newMethod/content→replacement; anchor_method→afterMethodName/beforeMethodName based on position.\n"
+        "- You can pass uri or full file path for scripts; the server normalizes to name/path.\n"
     )
 
 # Resources support: list and read Unity scripts/files
@@ -133,11 +134,62 @@ if hasattr(mcp, "resource") and hasattr(getattr(mcp, "resource"), "list"):
                 assets.append({"uri": f"unity://path/{rel}", "name": p.name})
         except Exception:
             pass
+        # Add spec resource so clients (e.g., Claude Desktop) can learn the exact contract
+        assets.append({
+            "uri": "unity://spec/script-edits",
+            "name": "Unity Script Edits – Required JSON"
+        })
         return assets
 
 if hasattr(mcp, "resource") and hasattr(getattr(mcp, "resource"), "read"):
     @mcp.resource.read()
     def read_resource(ctx: Context, uri: str) -> dict:
+        # Serve script-edits spec
+        if uri == "unity://spec/script-edits":
+            spec_json = (
+                '{\n'
+                '  "name": "Unity MCP — Script Edits v1",\n'
+                '  "target_tool": "script_apply_edits",\n'
+                '  "canonical_rules": {\n'
+                '    "always_use": ["op","className","methodName","replacement","afterMethodName","beforeMethodName"],\n'
+                '    "never_use": ["new_method","anchor_method","content","newText"],\n'
+                '    "defaults": {\n'
+                '      "className": "← server will default to \'name\' when omitted",\n'
+                '      "position": "end"\n'
+                '    }\n'
+                '  },\n'
+                '  "ops": [\n'
+                '    {"op":"replace_method","required":["className","methodName","replacement"],"optional":["returnType","parametersSignature","attributesContains"]},\n'
+                '    {"op":"insert_method","required":["className","replacement"],"position":{"enum":["start","end","after","before"],"after_requires":"afterMethodName","before_requires":"beforeMethodName"}},\n'
+                '    {"op":"delete_method","required":["className","methodName"]},\n'
+                '    {"op":"anchor_insert","required":["anchor","text"],"notes":"regex; position=before|after"}\n'
+                '  ],\n'
+                '  "examples": [\n'
+                '    {\n'
+                '      "title": "Replace a method",\n'
+                '      "args": {\n'
+                '        "name": "SmartReach",\n'
+                '        "path": "Assets/Scripts/Interaction",\n'
+                '        "edits": [\n'
+                '          {"op":"replace_method","className":"SmartReach","methodName":"HasTarget","replacement":"public bool HasTarget() { return currentTarget != null; }"}\n'
+                '        ],\n'
+                '        "options": { "validate": "standard", "refresh": "immediate" }\n'
+                '      }\n'
+                '    },\n'
+                '    {\n'
+                '      "title": "Insert a method after another",\n'
+                '      "args": {\n'
+                '        "name": "SmartReach",\n'
+                '        "path": "Assets/Scripts/Interaction",\n'
+                '        "edits": [\n'
+                '          {"op":"insert_method","className":"SmartReach","replacement":"public void PrintSeries() { Debug.Log(seriesName); }","position":"after","afterMethodName":"GetCurrentTarget"}\n'
+                '        ]\n'
+                '      }\n'
+                '    }\n'
+                '  ]\n'
+                '}\n'
+            )
+            return {"mimeType": "application/json", "text": spec_json}
         p = _resolve_safe_path_from_uri(uri)
         if not p or not p.exists():
             return {"mimeType": "text/plain", "text": f"Resource not found: {uri}"}

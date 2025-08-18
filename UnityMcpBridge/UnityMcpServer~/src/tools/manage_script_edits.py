@@ -80,98 +80,96 @@ def _infer_class_name(script_name: str) -> str:
 
 
 def _extract_code_after(keyword: str, request: str) -> str:
+    # Deprecated with NL removal; retained as no-op for compatibility
     idx = request.lower().find(keyword)
     if idx >= 0:
         return request[idx + len(keyword):].strip()
     return ""
 
 
-def _parse_natural_request_to_edits(
-    request: str,
-    script_name: str,
-    file_text: str,
-) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any]]:
-    """Parses a natural language request into a list of edits.
+def _normalize_script_locator(name: str, path: str) -> Tuple[str, str]:
+    """Best-effort normalization of script "name" and "path".
 
-    Returns (edits, message). message is a brief description or disambiguation note.
+    Accepts any of:
+    - name = "SmartReach", path = "Assets/Scripts/Interaction"
+    - name = "SmartReach.cs", path = "Assets/Scripts/Interaction"
+    - name = "Assets/Scripts/Interaction/SmartReach.cs", path = ""
+    - path = "Assets/Scripts/Interaction/SmartReach.cs" (name empty)
+    - name or path using uri prefixes: unity://path/..., file://...
+    - accidental duplicates like "Assets/.../SmartReach.cs/SmartReach.cs"
+
+    Returns (name_without_extension, directory_path_under_Assets).
     """
-    req = (request or "").strip()
-    if not req:
-        return [], "", {}
+    n = (name or "").strip()
+    p = (path or "").strip()
 
-    edits: List[Dict[str, Any]] = []
-    cls = _infer_class_name(script_name)
+    def strip_prefix(s: str) -> str:
+        if s.startswith("unity://path/"):
+            return s[len("unity://path/"):]
+        if s.startswith("file://"):
+            return s[len("file://"):]
+        return s
 
-    # 1) Insert/Add comment above/below/after method (prefer method signature anchor, not attributes)
-    m = re.search(r"(?:insert|add)\s+comment\s+[\"'](.+?)[\"']\s+(above|before|below|after)\s+(?:the\s+)?(?:method\s+)?([A-Za-z_][A-Za-z0-9_]*)",
-                  req, re.IGNORECASE)
-    if m:
-        comment = m.group(1)
-        pos = m.group(2).lower()
-        method = m.group(3)
-        position = "before" if pos in ("above", "before") else "after"
-        # Anchor on method signature line
-        anchor = rf"(?m)^\s*(?:(?:public|private|protected|internal|static|virtual|override|sealed|async|extern|unsafe|new|partial)\s+)*[\w<>\[\],\s]+\b{re.escape(method)}\s*\("
-        edits.append({
-            "op": "anchor_insert",
-            "anchor": anchor,
-            "position": position,
-            "text": f"    /* {comment} */\n",
-        })
-        return edits, "insert_comment", {"method": method}
+    def collapse_duplicate_tail(s: str) -> str:
+        # Collapse trailing "/X.cs/X.cs" to "/X.cs"
+        parts = s.split("/")
+        if len(parts) >= 2 and parts[-1] == parts[-2]:
+            parts = parts[:-1]
+        return "/".join(parts)
 
-    # 2) Insert method ... after <Method>
-    m = re.search(r"insert\s+method\s+```([\s\S]+?)```\s+after\s+([A-Za-z_][A-Za-z0-9_]*)", req, re.IGNORECASE)
-    if not m:
-        m = re.search(r"insert\s+method\s+(.+?)\s+after\s+([A-Za-z_][A-Za-z0-9_]*)", req, re.IGNORECASE)
-    if m:
-        snippet = m.group(1).strip()
-        after_name = m.group(2)
-        edits.append({
-            "op": "insert_method",
-            "className": cls,
-            "position": "after",
-            "afterMethodName": after_name,
-            "replacement": snippet,
-        })
-        return edits, "insert_method", {"method": after_name}
+    # Prefer a full path if provided in either field
+    candidate = ""
+    for v in (n, p):
+        v2 = strip_prefix(v)
+        if v2.endswith(".cs") or v2.startswith("Assets/"):
+            candidate = v2
+            break
 
-    # 3) Replace method <Name> with <code>
-    m = re.search(r"replace\s+method\s+([A-Za-z_][A-Za-z0-9_]*)\s+with\s+```([\s\S]+?)```", req, re.IGNORECASE)
-    if not m:
-        m = re.search(r"replace\s+method\s+([A-Za-z_][A-Za-z0-9_]*)\s+with\s+([\s\S]+)$", req, re.IGNORECASE)
-    if m:
-        name = m.group(1)
-        repl = m.group(2).strip()
-        edits.append({
-            "op": "replace_method",
-            "className": cls,
-            "methodName": name,
-            "replacement": repl,
-        })
-        return edits, "replace_method", {"method": name}
+    if candidate:
+        candidate = collapse_duplicate_tail(candidate)
+        # If a directory was passed in path and file in name, join them
+        if not candidate.endswith(".cs") and n.endswith(".cs"):
+            v2 = strip_prefix(n)
+            candidate = (candidate.rstrip("/") + "/" + v2.split("/")[-1])
+        if candidate.endswith(".cs"):
+            parts = candidate.split("/")
+            file_name = parts[-1]
+            dir_path = "/".join(parts[:-1]) if len(parts) > 1 else "Assets"
+            base = file_name[:-3] if file_name.lower().endswith(".cs") else file_name
+            return base, dir_path
 
-    # 4) Delete method <Name> [all overloads]
-    m = re.search(r"delete\s+method\s+([A-Za-z_][A-Za-z0-9_]*)", req, re.IGNORECASE)
-    if m:
-        name = m.group(1)
-        edits.append({
-            "op": "delete_method",
-            "className": cls,
-            "methodName": name,
-        })
-        return edits, "delete_method", {"method": name}
+    # Fall back: remove extension from name if present and return given path
+    base_name = n[:-3] if n.lower().endswith(".cs") else n
+    return base_name, (p or "Assets")
 
-    # 5) Fallback: no parse
-    return [], "Could not parse natural-language request", {}
+
+# Natural-language parsing removed; clients should send structured edits.
 
 
 def register_manage_script_edits_tools(mcp: FastMCP):
     @mcp.tool(description=(
-        "Apply targeted edits to an existing C# script WITHOUT replacing the whole file. "
-        "Preferred for inserts/patches. Accepts plain-English 'request' or structured 'edits'. "
-        "Structured ops: replace_class, delete_class, replace_method, delete_method, insert_method, anchor_insert, anchor_delete, anchor_replace. "
-        "Text ops (normalized safely): prepend, append, replace_range, regex_replace. For full-file creation, use manage_script(create)."
+        "Apply targeted edits to an existing C# script (no full-file overwrite).\n\n"
+        "Canonical fields (use these exact keys):\n"
+        "- op: replace_method | insert_method | delete_method | anchor_insert | anchor_delete | anchor_replace\n"
+        "- className: string (defaults to 'name' if omitted on method/class ops)\n"
+        "- methodName: string (required for replace_method, delete_method)\n"
+        "- replacement: string (required for replace_method, insert_method)\n"
+        "- position: start | end | after | before (insert_method only)\n"
+        "- afterMethodName / beforeMethodName: string (required when position='after'/'before')\n"
+        "- anchor: regex string (for anchor_* ops)\n"
+        "- text: string (for anchor_insert/anchor_replace)\n\n"
+        "Do NOT use: new_method, anchor_method, content, newText (aliases accepted but normalized).\n\n"
+        "Examples:\n"
+        "1) Replace a method:\n"
+        "{ 'name':'SmartReach','path':'Assets/Scripts/Interaction','edits':[\n"
+        "  { 'op':'replace_method','className':'SmartReach','methodName':'HasTarget',\n"
+        "    'replacement':'public bool HasTarget(){ return currentTarget!=null; }' }\n"
+        "], 'options':{'validate':'standard','refresh':'immediate'} }\n\n"
+        "2) Insert a method after another:\n"
+        "{ 'name':'SmartReach','path':'Assets/Scripts/Interaction','edits':[\n"
+        "  { 'op':'insert_method','className':'SmartReach','replacement':'public void PrintSeries(){ Debug.Log(seriesName); }',\n"
+        "    'position':'after','afterMethodName':'GetCurrentTarget' }\n"
+        "] }\n"
     ))
     def script_apply_edits(
         ctx: Context,
@@ -181,75 +179,191 @@ def register_manage_script_edits_tools(mcp: FastMCP):
         options: Dict[str, Any] | None = None,
         script_type: str = "MonoBehaviour",
         namespace: str = "",
-        request: str | None = None,
     ) -> Dict[str, Any]:
-        # If the edits request structured class/method ops, route directly to Unity's 'edit' action.
-        # These bypass local text validation/encoding since Unity performs the semantic changes.
-        # If user provided a natural-language request instead of structured edits, parse it
-        if (not edits) and request:
-            # Read to help extraction and return contextual diff/verification
-            read_resp = send_command_with_retry("manage_script", {
-                "action": "read",
-                "name": name,
-                "path": path,
-                "namespace": namespace,
-                "scriptType": script_type,
-            })
-            if not isinstance(read_resp, dict) or not read_resp.get("success"):
-                return read_resp if isinstance(read_resp, dict) else {"success": False, "message": str(read_resp)}
-            data = read_resp.get("data") or read_resp.get("result", {}).get("data") or {}
-            contents = data.get("contents")
-            if contents is None and data.get("contentsEncoded") and data.get("encodedContents"):
-                contents = base64.b64decode(data["encodedContents"]).decode("utf-8")
-            parsed_edits, why, context = _parse_natural_request_to_edits(request, name, contents or "")
-            if not parsed_edits:
-                return {"success": False, "message": f"Could not understand request: {why}"}
-            edits = parsed_edits
-            # Provide sensible defaults for natural language requests
-            options = dict(options or {})
-            options.setdefault("validate", "standard")
-            options.setdefault("refresh", "immediate")
-            if len(edits) > 1:
-                options.setdefault("applyMode", "sequential")
+        # Normalize locator first so downstream calls target the correct script file.
+        name, path = _normalize_script_locator(name, path)
+
+        # No NL path: clients must provide structured edits in 'edits'.
 
         # Normalize unsupported or aliased ops to known structured/text paths
-        normalized_edits: List[Dict[str, Any]] = []
-        for e in edits or []:
+        def _unwrap_and_alias(edit: Dict[str, Any]) -> Dict[str, Any]:
+            # Unwrap single-key wrappers like {"replace_method": {...}}
+            for wrapper_key in (
+                "replace_method","insert_method","delete_method",
+                "replace_class","delete_class",
+                "anchor_insert","anchor_replace","anchor_delete",
+            ):
+                if wrapper_key in edit and isinstance(edit[wrapper_key], dict):
+                    inner = dict(edit[wrapper_key])
+                    inner["op"] = wrapper_key
+                    edit = inner
+                    break
+
+            e = dict(edit)
             op = (e.get("op") or e.get("operation") or e.get("type") or e.get("mode") or "").strip().lower()
-            # Map common aliases
+            if op:
+                e["op"] = op
+
+            # Common field aliases
+            if "class_name" in e and "className" not in e:
+                e["className"] = e.pop("class_name")
+            if "class" in e and "className" not in e:
+                e["className"] = e.pop("class")
+            if "method_name" in e and "methodName" not in e:
+                e["methodName"] = e.pop("method_name")
+            # Some clients use a generic 'target' for method name
+            if "target" in e and "methodName" not in e:
+                e["methodName"] = e.pop("target")
+            if "method" in e and "methodName" not in e:
+                e["methodName"] = e.pop("method")
+            if "new_content" in e and "replacement" not in e:
+                e["replacement"] = e.pop("new_content")
+            if "newMethod" in e and "replacement" not in e:
+                e["replacement"] = e.pop("newMethod")
+            if "new_method" in e and "replacement" not in e:
+                e["replacement"] = e.pop("new_method")
+            if "content" in e and "replacement" not in e:
+                e["replacement"] = e.pop("content")
+            if "after" in e and "afterMethodName" not in e:
+                e["afterMethodName"] = e.pop("after")
+            if "after_method" in e and "afterMethodName" not in e:
+                e["afterMethodName"] = e.pop("after_method")
+            if "before" in e and "beforeMethodName" not in e:
+                e["beforeMethodName"] = e.pop("before")
+            if "before_method" in e and "beforeMethodName" not in e:
+                e["beforeMethodName"] = e.pop("before_method")
+            # anchor_method → before/after based on position (default after)
+            if "anchor_method" in e:
+                anchor = e.pop("anchor_method")
+                pos = (e.get("position") or "after").strip().lower()
+                if pos == "before" and "beforeMethodName" not in e:
+                    e["beforeMethodName"] = anchor
+                elif "afterMethodName" not in e:
+                    e["afterMethodName"] = anchor
+            if "anchorText" in e and "anchor" not in e:
+                e["anchor"] = e.pop("anchorText")
+            if "pattern" in e and "anchor" not in e and e.get("op") and e["op"].startswith("anchor_"):
+                e["anchor"] = e.pop("pattern")
+            if "newText" in e and "text" not in e:
+                e["text"] = e.pop("newText")
+
+            # LSP-like range edit -> replace_range
+            if "range" in e and isinstance(e["range"], dict):
+                rng = e.pop("range")
+                start = rng.get("start", {})
+                end = rng.get("end", {})
+                # Convert 0-based to 1-based line/col
+                e["op"] = "replace_range"
+                e["startLine"] = int(start.get("line", 0)) + 1
+                e["startCol"] = int(start.get("character", 0)) + 1
+                e["endLine"] = int(end.get("line", 0)) + 1
+                e["endCol"] = int(end.get("character", 0)) + 1
+                if "newText" in edit and "text" not in e:
+                    e["text"] = edit.get("newText", "")
+            return e
+
+        normalized_edits: List[Dict[str, Any]] = []
+        for raw in edits or []:
+            e = _unwrap_and_alias(raw)
+            op = (e.get("op") or e.get("operation") or e.get("type") or e.get("mode") or "").strip().lower()
+
+            # Default className to script name if missing on structured method/class ops
+            if op in ("replace_class","delete_class","replace_method","delete_method","insert_method") and not e.get("className"):
+                e["className"] = name
+
+            # Map common aliases for text ops
             if op in ("text_replace",):
-                e = dict(e)
                 e["op"] = "replace_range"
                 normalized_edits.append(e)
                 continue
             if op in ("regex_delete",):
-                # delete first match via regex by replacing with empty
-                e = dict(e)
                 e["op"] = "regex_replace"
                 e.setdefault("text", "")
                 normalized_edits.append(e)
                 continue
             if op == "regex_replace" and ("replacement" not in e):
-                # Normalize alternative text fields into 'replacement' for local preview path
                 if "text" in e:
-                    e = dict(e)
                     e["replacement"] = e.get("text", "")
                 elif "insert" in e or "content" in e:
-                    e = dict(e)
                     e["replacement"] = e.get("insert") or e.get("content") or ""
             if op == "anchor_insert" and not (e.get("text") or e.get("insert") or e.get("content") or e.get("replacement")):
-                # Upgrade empty insert intent to anchor_delete with guidance
-                e = dict(e)
                 e["op"] = "anchor_delete"
                 normalized_edits.append(e)
                 continue
             normalized_edits.append(e)
 
         edits = normalized_edits
+        normalized_for_echo = edits
+
+        # Validate required fields and produce machine-parsable hints
+        def error_with_hint(message: str, expected: Dict[str, Any], suggestion: Dict[str, Any]) -> Dict[str, Any]:
+            return {"success": False, "message": message, "expected": expected, "rewrite_suggestion": suggestion}
+
+        for e in edits or []:
+            op = e.get("op", "")
+            if op == "replace_method":
+                if not e.get("methodName"):
+                    return error_with_hint(
+                        "replace_method requires 'methodName'.",
+                        {"op": "replace_method", "required": ["className", "methodName", "replacement"]},
+                        {"edits[0].methodName": "HasTarget"}
+                    )
+                if not (e.get("replacement") or e.get("text")):
+                    return error_with_hint(
+                        "replace_method requires 'replacement' (inline or base64).",
+                        {"op": "replace_method", "required": ["className", "methodName", "replacement"]},
+                        {"edits[0].replacement": "public bool X(){ return true; }"}
+                    )
+            elif op == "insert_method":
+                if not (e.get("replacement") or e.get("text")):
+                    return error_with_hint(
+                        "insert_method requires a non-empty 'replacement'.",
+                        {"op": "insert_method", "required": ["className", "replacement"], "position": {"after_requires": "afterMethodName", "before_requires": "beforeMethodName"}},
+                        {"edits[0].replacement": "public void PrintSeries(){ Debug.Log(\"1,2,3\"); }"}
+                    )
+                pos = (e.get("position") or "").lower()
+                if pos == "after" and not e.get("afterMethodName"):
+                    return error_with_hint(
+                        "insert_method with position='after' requires 'afterMethodName'.",
+                        {"op": "insert_method", "position": {"after_requires": "afterMethodName"}},
+                        {"edits[0].afterMethodName": "GetCurrentTarget"}
+                    )
+                if pos == "before" and not e.get("beforeMethodName"):
+                    return error_with_hint(
+                        "insert_method with position='before' requires 'beforeMethodName'.",
+                        {"op": "insert_method", "position": {"before_requires": "beforeMethodName"}},
+                        {"edits[0].beforeMethodName": "GetCurrentTarget"}
+                    )
+            elif op == "delete_method":
+                if not e.get("methodName"):
+                    return error_with_hint(
+                        "delete_method requires 'methodName'.",
+                        {"op": "delete_method", "required": ["className", "methodName"]},
+                        {"edits[0].methodName": "PrintSeries"}
+                    )
+            elif op in ("anchor_insert", "anchor_replace", "anchor_delete"):
+                if not e.get("anchor"):
+                    return error_with_hint(
+                        f"{op} requires 'anchor' (regex).",
+                        {"op": op, "required": ["anchor"]},
+                        {"edits[0].anchor": "(?m)^\\s*public\\s+bool\\s+HasTarget\\s*\\("}
+                    )
+                if op in ("anchor_insert", "anchor_replace") and not (e.get("text") or e.get("replacement")):
+                    return error_with_hint(
+                        f"{op} requires 'text'.",
+                        {"op": op, "required": ["anchor", "text"]},
+                        {"edits[0].text": "/* comment */\n"}
+                    )
 
         for e in edits or []:
             op = (e.get("op") or e.get("operation") or e.get("type") or e.get("mode") or "").strip().lower()
             if op in ("replace_class", "delete_class", "replace_method", "delete_method", "insert_method", "anchor_insert", "anchor_delete", "anchor_replace"):
+                # Default applyMode to sequential if mixing insert + replace in the same batch
+                ops_in_batch = { (x.get("op") or "").lower() for x in edits or [] }
+                options = dict(options or {})
+                if "insert_method" in ops_in_batch and "replace_method" in ops_in_batch and "applyMode" not in options:
+                    options["applyMode"] = "sequential"
+
                 params: Dict[str, Any] = {
                     "action": "edit",
                     "name": name,
@@ -261,6 +375,8 @@ def register_manage_script_edits_tools(mcp: FastMCP):
                 if options is not None:
                     params["options"] = options
                 resp = send_command_with_retry("manage_script", params)
+                if isinstance(resp, dict):
+                    resp.setdefault("data", {})["normalizedEdits"] = normalized_for_echo
                 return resp if isinstance(resp, dict) else {"success": False, "message": str(resp)}
 
         # 1) read from Unity
@@ -375,37 +491,8 @@ def register_manage_script_edits_tools(mcp: FastMCP):
                     }
                 }
                 resp = send_command_with_retry("manage_script", params)
-                # Attach a small verification slice when possible
-                if isinstance(resp, dict) and resp.get("success"):
-                    try:
-                        # Re-read around the anchor/method if known
-                        method = context.get("method") if 'context' in locals() else None
-                        read_params = {
-                            "action": "read",
-                            "name": name,
-                            "path": path,
-                            "namespace": namespace,
-                            "scriptType": script_type,
-                        }
-                        read_resp = send_command_with_retry("manage_script", read_params)
-                        if isinstance(read_resp, dict) and read_resp.get("success"):
-                            data = read_resp.get("data", {})
-                            text_all = data.get("contents") or ""
-                            if method:
-                                import re as _re2
-                                pat = _re2.compile(rf"(?m)^.*\b{_re2.escape(method)}\s*\(")
-                                lines = text_all.splitlines()
-                                around = []
-                                for i, line in enumerate(lines, start=1):
-                                    if pat.search(line):
-                                        s = max(1, i - 5)
-                                        e = min(len(lines), i + 5)
-                                        around = lines[s-1:e]
-                                        break
-                                if around:
-                                    resp.setdefault("data", {})["verification"] = {"method": method, "lines": around}
-                    except Exception:
-                        pass
+                if isinstance(resp, dict):
+                    resp.setdefault("data", {})["normalizedEdits"] = normalized_for_echo
                 return resp if isinstance(resp, dict) else {"success": False, "message": str(resp)}
             except Exception as e:
                 return {"success": False, "message": f"Edit conversion failed: {e}"}
@@ -421,7 +508,10 @@ def register_manage_script_edits_tools(mcp: FastMCP):
                 "edits": edits,
                 "options": {"refresh": "immediate", "validate": (options or {}).get("validate", "standard")}
             }
-            return send_command_with_retry("manage_script", params)
+            resp2 = send_command_with_retry("manage_script", params)
+            if isinstance(resp2, dict):
+                resp2.setdefault("data", {})["normalizedEdits"] = normalized_for_echo
+            return resp2 if isinstance(resp2, dict) else {"success": False, "message": str(resp2)}
         
         # For regex_replace on large files, support preview/confirm
         if "regex_replace" in text_ops and not (options or {}).get("confirm"):
@@ -449,7 +539,7 @@ def register_manage_script_edits_tools(mcp: FastMCP):
             # Limit diff size to keep responses small
             if len(diff) > 2000:
                 diff = diff[:2000] + ["... (diff truncated) ..."]
-            return {"success": True, "message": "Preview only (no write)", "data": {"diff": "\n".join(diff)}}
+            return {"success": True, "message": "Preview only (no write)", "data": {"diff": "\n".join(diff), "normalizedEdits": normalized_for_echo}}
 
         # 3) update to Unity
         # Default refresh/validate for natural usage on text path as well
@@ -469,23 +559,11 @@ def register_manage_script_edits_tools(mcp: FastMCP):
         if options is not None:
             params["options"] = options
         write_resp = send_command_with_retry("manage_script", params)
+        if isinstance(write_resp, dict):
+            write_resp.setdefault("data", {})["normalizedEdits"] = normalized_for_echo
         return write_resp if isinstance(write_resp, dict) else {"success": False, "message": str(write_resp)}
 
 
 
 
-    @mcp.tool(description=(
-        "Safe script editing wrapper. Accepts natural language 'request' or flexible 'edits' and normalizes to safe structured ops or guarded text edits. "
-        "Defaults: validate=standard, refresh=immediate, applyMode=sequential for multi-edits."
-    ))
-    def safe_script_edit(
-        ctx: Context,
-        name: str,
-        path: str,
-        edits: List[Dict[str, Any]] | None = None,
-        options: Dict[str, Any] | None = None,
-        script_type: str = "MonoBehaviour",
-        namespace: str = "",
-        request: str | None = None,
-    ) -> Dict[str, Any]:
-        return script_apply_edits(ctx, name, path, edits or [], options or {}, script_type, namespace, request)
+    # safe_script_edit removed to simplify API; clients should call script_apply_edits directly
