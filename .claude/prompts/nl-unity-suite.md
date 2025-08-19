@@ -7,7 +7,7 @@ You are running in CI at the repository root. Use only the tools that are allowe
 - MCP tools from server "unity" (exposed as mcp__unity__*).
 
 ## Test target
-- Primary file: `Assets/Scripts/Interaction/SmartReach.cs`
+- Primary file: `ClaudeTests/longUnityScript-claudeTest.cs`
 - For each operation, prefer structured edit tools (`replace_method`, `insert_method`, `delete_method`, `anchor_insert`, `apply_text_edits`, `regex_replace`) via the MCP server.
 - Include `precondition_sha256` for any text path write.
 
@@ -23,8 +23,8 @@ You are running in CI at the repository root. Use only the tools that are allowe
 - If a write fails midway, ensure the file is restored before proceeding.
 
 ## NL-0. Sanity Reads (windowed)
-- Tail 120 lines of SmartReach.cs.
-- Show 40 lines around method `DeactivateIK`.
+- Tail 120 lines of `ClaudeTests/longUnityScript-claudeTest.cs`.
+- Show 40 lines around method `Update`.
 - **Pass** if both windows render with expected anchors present.
 
 ## NL-1. Method replace/insert/delete (natural-language)
@@ -35,11 +35,11 @@ You are running in CI at the repository root. Use only the tools that are allowe
 - **Pass** if diffs match and verification windows show expected content.
 
 ## NL-2. Anchor comment insertion
-- Add a comment `Build marker OK` immediately above `TestSelectObjectToPlace` attribute line.
-- **Pass** if the comment appears directly above `[ContextMenu("Test SelectObjectToPlace")]`.
+- Add a comment `Build marker OK` immediately above the `Update` method.
+- **Pass** if the comment appears directly above the `public void Update()` line.
 
 ## NL-3. End-of-class insertion
-- Insert a 3-line comment `Tail test A/B/C` before the last method (preview, then apply).
+- Insert a 3-line comment `Tail test A/B/C` before the last method or immediately before the final class brace (preview, then apply).
 - **Pass** if windowed read shows the three lines at the intended location.
 
 ## NL-4. Compile trigger
@@ -56,9 +56,9 @@ You are running in CI at the repository root. Use only the tools that are allowe
 - Identify `HasTarget` body lines; single `replace_range` to change only inside braces; then revert.
 - **Pass** on exact-range change + revert.
 
-## T-C. Attribute preservation
-- For `DumpTargetingSnapshot`, change only interior `Debug.Log` lines via `replace_range`; attributes must remain untouched (inline or previous-line variants).
-- **Pass** if attributes unchanged.
+## T-C. Header/region preservation
+- For `ApplyBlend`, change only interior lines via `replace_range`; the method signature and surrounding `#region`/`#endregion` markers must remain untouched.
+- **Pass** if signature and region markers unchanged.
 
 ## T-D. End-of-class insertion (anchor)
 - Find final class brace; `position: before` to append a temporary helper; then remove.
@@ -73,8 +73,8 @@ You are running in CI at the repository root. Use only the tools that are allowe
 - **Pass** if either all 3 apply or none.
 
 ## T-G. Path normalization
-- Run the same edit once with `unity://path/Assets/...` and once with `Assets/...` (if supported).
-- **Pass** if both target the same file and no `Assets/Assets` duplication.
+- Run the same edit once with `unity://path/ClaudeTests/longUnityScript-claudeTest.cs` and once with `ClaudeTests/longUnityScript-claudeTest.cs` (if supported).
+- **Pass** if both target the same file and no path duplication.
 
 ## T-H. Validation levels
 - After edits, run `validate` with `level: "standard"`, then `"basic"` for temporarily unbalanced text ops; final state must be valid.

@@ -632,9 +632,9 @@ def register_manage_script_edits_tools(mcp: FastMCP):
                 diff = list(difflib.unified_diff(contents.splitlines(), preview_text.splitlines(), fromfile="before", tofile="after", n=2))
                 if len(diff) > 800:
                     diff = diff[:800] + ["... (diff truncated) ..."]
-                return {"success": False, "message": "Preview diff; set options.confirm=true to apply.", "data": {"diff": "\n".join(diff)}}
+                return _with_norm({"success": False, "message": "Preview diff; set options.confirm=true to apply.", "data": {"diff": "\n".join(diff)}}, normalized_for_echo, routing="text")
             except Exception as e:
-                return {"success": False, "message": f"Preview failed: {e}"}
+                return _with_norm({"success": False, "code": "preview_failed", "message": f"Preview failed: {e}"}, normalized_for_echo, routing="text")
         # 2) apply edits locally (only if not text-ops)
         try:
             new_contents = _apply_edits_locally(contents, edits)
@@ -670,9 +670,7 @@ def register_manage_script_edits_tools(mcp: FastMCP):
         if options is not None:
             params["options"] = options
         write_resp = send_command_with_retry("manage_script", params)
-        if isinstance(write_resp, dict):
-            write_resp.setdefault("data", {})["normalizedEdits"] = normalized_for_echo
-        return write_resp if isinstance(write_resp, dict) else {"success": False, "message": str(write_resp)}
+        return _with_norm(write_resp if isinstance(write_resp, dict) else {"success": False, "message": str(write_resp)}, normalized_for_echo, routing="text")
 
 
 

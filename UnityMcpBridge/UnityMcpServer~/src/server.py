@@ -159,7 +159,7 @@ if hasattr(mcp, "resource") and hasattr(getattr(mcp, "resource"), "read"):
                 '    }\n'
                 '  },\n'
                 '  "ops": [\n'
-                '    {"op":"replace_method","required":["className","methodName","replacement"],"optional":["returnType","parametersSignature","attributesContains"]},\n'
+                '    {"op":"replace_method","required":["className","methodName","replacement"],"optional":["returnType","parametersSignature","attributesContains"],"examples":[{"note":"match overload by signature","parametersSignature":"(int a, string b)"},{"note":"ensure attributes retained","attributesContains":"ContextMenu"}]},\n'
                 '    {"op":"insert_method","required":["className","replacement"],"position":{"enum":["start","end","after","before"],"after_requires":"afterMethodName","before_requires":"beforeMethodName"}},\n'
                 '    {"op":"delete_method","required":["className","methodName"]},\n'
                 '    {"op":"anchor_insert","required":["anchor","text"],"notes":"regex; position=before|after"}\n'
