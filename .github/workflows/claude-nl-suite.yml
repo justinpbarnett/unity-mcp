@@ -1,0 +1,110 @@
+name: Claude NL suite + (optional) Unity compile
+
+on: { workflow_dispatch: {} }
+
+
+
+permissions:
+  contents: write        # allow Claude to write test artifacts
+  pull-requests: write   # allow annotations / comments
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nl-suite:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      # If your MCP server needs Python deps (adjust to your repo layout)
+      - name: Install Python + uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: '3.11'
+
+      - name: Prepare Unity MCP server deps (adjust path or remove if N/A)
+        run: |
+          if [ -f UnityMcpServer/requirements.txt ]; then
+            uv pip install -r UnityMcpServer/requirements.txt
+          fi
+
+      - name: Run Claude NL/T test suite
+        id: claude
+        uses: anthropics/claude-code-base-action@beta
+        with:
+          # All the test instructions live here (see next file)
+          prompt_file: .claude/prompts/nl-unity-suite.md
+
+          # Keep tools tight: read, grep, glob, run shell, orchestrate batches,
+          # and call your MCP server tools. (Adjust the mcp__ prefix to match.)
+          allowed_tools: "Bash(git:*),View,GlobTool,GrepTool,BatchTool,mcp__unity__*"
+
+          # Inline MCP config (or put this JSON in .claude/mcp.json)
+          mcp_config: |
+            {
+              "mcpServers": {
+                "unity": {
+                  "command": "python",
+                  "args": ["UnityMcpServer/src/server.py"]
+                }
+              }
+            }
+
+          # Model + guardrails
+          model: "claude-3-7-sonnet-20250219"
+          max_turns: "10"
+          timeout_minutes: "20"
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Upload JUnit (Claude NL/T)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-nl-tests
+          path: reports/claude-nl-tests.xml
+
+      - name: Annotate PR with test results (Claude NL/T)
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Claude NL/T
+          path: reports/claude-nl-tests.xml
+          reporter: java-junit
+
+      # --- Optional: Unity compile after Claude’s edits (satisfies NL-4) ---
+      # If your repo is a *Unity project*:
+      - name: Unity compile (Project)
+        if: ${{ always() && hashFiles('ProjectSettings/ProjectVersion.txt') != '' && secrets.UNITY_LICENSE != '' }}
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}  # OR UNITY_* for Pro
+        with:
+          projectPath: .
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          # Even with no tests, this compiles; add EditMode/PlayMode tests later.
+          testMode: EditMode
+
+      # If your repo is primarily a *Unity package*, prefer packageMode:
+      - name: Unity compile (Package)
+        if: ${{ always() && hashFiles('Packages/manifest.json') != '' && hashFiles('ProjectSettings/ProjectVersion.txt') == '' && secrets.UNITY_LICENSE != '' }}
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        with:
+          packageMode: true
+          unityVersion: 2022.3.45f1   # <-- set explicitly for packages
+          projectPath: .              # or a small sample project path
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clean working tree (discard temp edits)
+        if: always()
+        run: |
+          git restore -SW :/
+          git clean -fd
+
