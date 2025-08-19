@@ -1,0 +1,128 @@
+name: Claude NL suite + (optional) Unity compile
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write        # allow Claude to write test artifacts
+  pull-requests: write   # allow annotations / comments
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nl-suite:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Python + uv for the Unity MCP server
+      - name: Install Python + uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install UnityMcpServer deps
+        run: |
+          set -eux
+          if [ -f "UnityMcpBridge/UnityMcpServer~/src/pyproject.toml" ]; then
+            uv pip install -e "UnityMcpBridge/UnityMcpServer~/src"
+          elif [ -f "UnityMcpBridge/UnityMcpServer~/src/requirements.txt" ]; then
+            uv pip install -r "UnityMcpBridge/UnityMcpServer~/src/requirements.txt"
+          else
+            echo "No Python deps found for UnityMcpServer~ (skipping)"
+          fi
+
+      - name: Run Claude NL/T test suite
+        id: claude
+        uses: anthropics/claude-code-base-action@beta
+        with:
+          # Test instructions live here
+          prompt_file: .claude/prompts/nl-unity-suite.md
+
+          # Tight tool allowlist
+          allowed_tools: "Bash(git:*),View,GlobTool,GrepTool,BatchTool,mcp__unity__*"
+
+          # MCP server path (matches your screenshots)
+          mcp_config: |
+            {
+              "mcpServers": {
+                "unity": {
+                  "command": "python",
+                  "args": ["UnityMcpBridge/UnityMcpServer~/src/server.py"]
+                }
+              }
+            }
+
+          # Guardrails
+          model: "claude-3-7-sonnet-20250219"
+          max_turns: "10"
+          timeout_minutes: "20"
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Upload JUnit (Claude NL/T)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-nl-tests
+          path: reports/claude-nl-tests.xml
+          if-no-files-found: ignore
+
+      - name: Annotate PR with test results (Claude NL/T)
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Claude NL/T
+          path: reports/claude-nl-tests.xml
+          reporter: java-junit
+          fail-on-empty: false
+
+      # Detect secrets + project/package mode WITHOUT using secrets in `if:`
+      - name: Detect Unity mode & secrets
+        id: detect
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          if [ -n "$UNITY_LICENSE" ]; then echo "has_license=true" >> "$GITHUB_OUTPUT"; else echo "has_license=false" >> "$GITHUB_OUTPUT"; fi
+          if [ -f "ProjectSettings/ProjectVersion.txt" ]; then echo "is_project=true"  >> "$GITHUB_OUTPUT"; else echo "is_project=false" >> "$GITHUB_OUTPUT"; fi
+          if [ -f "Packages/manifest.json" ] && [ ! -f "ProjectSettings/ProjectVersion.txt" ]; then echo "is_package=true"  >> "$GITHUB_OUTPUT"; else echo "is_package=false" >> "$GITHUB_OUTPUT"; fi
+
+      # --- Optional: Unity compile after Claude’s edits (satisfies NL-4) ---
+      - name: Unity compile (Project)
+        if: always() && steps.detect.outputs.has_license == 'true' && steps.detect.outputs.is_project == 'true'
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE:  ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: .
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          testMode: EditMode
+
+      - name: Unity compile (Package)
+        if: always() && steps.detect.outputs.has_license == 'true' && steps.detect.outputs.is_package == 'true'
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE:  ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          packageMode: true
+          unityVersion: 2022.3.45f1   # set your exact version
+          projectPath: .
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clean working tree (discard temp edits)
+        if: always()
+        run: |
+          git restore -SW :/
+          git clean -fd
