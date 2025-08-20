@@ -1,16 +1,16 @@
-# MCP For Unity Development Tools
+# MCP for Unity Development Tools
 
-Welcome to the MCP For Unity development environment! This directory contains tools and utilities to streamline MCP For Unity core development.
+Welcome to the MCP for Unity development environment! This directory contains tools and utilities to streamline MCP for Unity core development.
 
 ## 🚀 Available Development Features
 
 ### ✅ Development Deployment Scripts
-Quick deployment and testing tools for MCP For Unity core changes.
+Quick deployment and testing tools for MCP for Unity core changes.
 
 ### 🔄 Coming Soon
 - **Development Mode Toggle**: Built-in Unity editor development features
 - **Hot Reload System**: Real-time code updates without Unity restarts  
-- **Plugin Development Kit**: Tools for creating custom MCP For Unity extensions
+- **Plugin Development Kit**: Tools for creating custom MCP for Unity extensions
 - **Automated Testing Suite**: Comprehensive testing framework for contributions
 - **Debug Dashboard**: Advanced debugging and monitoring tools
 
@@ -18,7 +18,7 @@ Quick deployment and testing tools for MCP For Unity core changes.
 
 ## Development Deployment Scripts
 
-These deployment scripts help you quickly test changes to MCP For Unity core code.
+These deployment scripts help you quickly test changes to MCP for Unity core code.
 
 ## Scripts
 
@@ -60,7 +60,7 @@ X:\UnityProject\Library\PackageCache\com.coplaydev.unity-mcp@272123cfd97e
 
 To find it reliably:
 1. Open Unity Package Manager
-2. Select "MCP For Unity" package
+2. Select "MCP for Unity" package
 3. Right click the package and choose "Show in Explorer"
 4. That opens the exact cache folder Unity is using for your project
 
@@ -77,7 +77,7 @@ Note: In recent builds, the Python server sources are also bundled inside the pa
 
 ## Switching MCP package sources quickly
 
-Use `mcp_source.py` to quickly switch between different MCP For Unity package sources:
+Use `mcp_source.py` to quickly switch between different MCP for Unity package sources:
 
 **Usage:**
 ```bash
@@ -96,7 +96,7 @@ After switching, open Package Manager and Refresh to re-resolve packages.
 
 ### "Path not found" errors running the .bat file
 - Verify Unity package cache path is correct
-- Check that MCP For Unity package is actually installed
+- Check that MCP for Unity package is actually installed
 - Ensure server is installed via MCP client
 
 ### "Permission denied" errors

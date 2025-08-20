@@ -1,4 +1,4 @@
-# MCP For Unity ✨
+# MCP for Unity ✨
 
 #### Proudly sponsored and maintained by [Coplay](https://www.coplay.dev/?ref=unity-mcp), the AI assistant for Unity. [Read the backstory here.](https://www.coplay.dev/blog/coplay-and-open-source-unity-mcp-join-forces)
 
@@ -13,13 +13,13 @@
 
 **Create your Unity apps with LLMs!**
 
-MCP For Unity acts as a bridge, allowing AI assistants (like Claude, Cursor) to interact directly with your Unity Editor via a local **MCP (Model Context Protocol) Client**. Give your LLM tools to manage assets, control scenes, edit scripts, and automate tasks within Unity.
+MCP for Unity acts as a bridge, allowing AI assistants (like Claude, Cursor) to interact directly with your Unity Editor via a local **MCP (Model Context Protocol) Client**. Give your LLM tools to manage assets, control scenes, edit scripts, and automate tasks within Unity.
 
 ## 💬 Join Our Community
 
 ### [Discord](https://discord.gg/y4p8KfzrN4)
 
-**Get help, share ideas, and collaborate with other MCP For Unity developers!**  
+**Get help, share ideas, and collaborate with other MCP for Unity developers!**  
 
 ---
 
@@ -49,12 +49,12 @@ MCP For Unity acts as a bridge, allowing AI assistants (like Claude, Cursor) to 
 
 ## How It Works 🤔
 
-MCP For Unity connects your tools using two components:
+MCP for Unity connects your tools using two components:
 
-1.  **MCP For Unity Bridge:** A Unity package running inside the Editor. (Installed via Package Manager).
-2.  **MCP For Unity Server:** A Python server that runs locally, communicating between the Unity Bridge and your MCP Client. (Installed automatically by the package on first run or via Auto-Setup; manual setup is available as a fallback).
+1.  **MCP for Unity Bridge:** A Unity package running inside the Editor. (Installed via Package Manager).
+2.  **MCP for Unity Server:** A Python server that runs locally, communicating between the Unity Bridge and your MCP Client. (Installed automatically by the package on first run or via Auto-Setup; manual setup is available as a fallback).
 
-**Flow:** `[Your LLM via MCP Client] <-> [MCP For Unity Server (Python)] <-> [MCP For Unity Bridge (Unity Editor)]`
+**Flow:** `[Your LLM via MCP Client] <-> [MCP for Unity Server (Python)] <-> [MCP for Unity Bridge (Unity Editor)]`
 
 ---
 
@@ -129,14 +129,14 @@ Connect your MCP Client (Claude, Cursor, etc.) to the Python server set up in St
 
 **Option A: Auto-Setup (Recommended for Claude/Cursor/VSC Copilot)**
 
-1.  In Unity, go to `Window > MCP For Unity`.
+1.  In Unity, go to `Window > MCP for Unity`.
 2.  Click `Auto-Setup`.
 3.  Look for a green status indicator 🟢 and "Connected ✓". *(This attempts to modify the MCP Client\'s config file automatically).* 
 
 <details><summary><strong>Client-specific troubleshooting</strong></summary>
 
-  - **VSCode**: uses `Code/User/mcp.json` with top-level `servers.unityMCP` and `"type": "stdio"`. On Windows, MCP For Unity writes an absolute `uv.exe` (prefers WinGet Links shim) to avoid PATH issues.
-  - **Cursor / Windsurf** [(**help link**)](https://github.com/CoplayDev/unity-mcp/wiki/1.-Fix-Unity-MCP-and-Cursor,-VSCode-&-Windsurf): if `uv` is missing, the MCP For Unity window shows "uv Not Found" with a quick [HELP] link and a "Choose `uv` Install Location" button.
+  - **VSCode**: uses `Code/User/mcp.json` with top-level `servers.unityMCP` and `"type": "stdio"`. On Windows, MCP for Unity writes an absolute `uv.exe` (prefers WinGet Links shim) to avoid PATH issues.
+  - **Cursor / Windsurf** [(**help link**)](https://github.com/CoplayDev/unity-mcp/wiki/1.-Fix-Unity-MCP-and-Cursor,-VSCode-&-Windsurf): if `uv` is missing, the MCP for Unity window shows "uv Not Found" with a quick [HELP] link and a "Choose `uv` Install Location" button.
   - **Claude Code** [(**help link**)](https://github.com/CoplayDev/unity-mcp/wiki/2.-Fix-Unity-MCP-and-Claude-Code): if `claude` isn't found, the window shows "Claude Not Found" with [HELP] and a "Choose Claude Location" button. Unregister now updates the UI immediately.</details>
 
 
@@ -252,9 +252,9 @@ claude mcp add UnityMCP -- "C:/Users/USERNAME/AppData/Roaming/Python/Python313/S
 
 ## Usage ▶️
 
-1. **Open your Unity Project.** The MCP For Unity package should connect automatically. Check status via Window > MCP For Unity.
+1. **Open your Unity Project.** The MCP for Unity package should connect automatically. Check status via Window > MCP for Unity.
     
-2. **Start your MCP Client** (Claude, Cursor, etc.). It should automatically launch the MCP For Unity Server (Python) using the configuration from Installation Step 2.
+2. **Start your MCP Client** (Claude, Cursor, etc.). It should automatically launch the MCP for Unity Server (Python) using the configuration from Installation Step 2.
     
 3. **Interact!** Unity tools should now be available in your MCP Client.
     
@@ -304,9 +304,9 @@ claude mcp add UnityMCP -- "C:/Users/USERNAME/AppData/Roaming/Python/Python313/S
 
 ### Development Tools
 
-If you\'re contributing to MCP For Unity or want to test core changes, we have development tools to streamline your workflow:
+If you\'re contributing to MCP for Unity or want to test core changes, we have development tools to streamline your workflow:
 
-- **Development Deployment Scripts**: Quickly deploy and test your changes to MCP For Unity Bridge and Python Server
+- **Development Deployment Scripts**: Quickly deploy and test your changes to MCP for Unity Bridge and Python Server
 - **Automatic Backup System**: Safe testing with easy rollback capabilities  
 - **Hot Reload Workflow**: Fast iteration cycle for core development
 - **More coming!**
@@ -315,7 +315,7 @@ If you\'re contributing to MCP For Unity or want to test core changes, we have d
 
 ### Contributing 🤝
 
-Help make MCP For Unity better!
+Help make MCP for Unity better!
 
 1. **Fork** the main repository.
     
@@ -338,7 +338,7 @@ Help make MCP For Unity better!
 
 - **Unity Bridge Not Running/Connecting:**
     - Ensure Unity Editor is open.
-    - Check the status window: Window > MCP For Unity.
+    - Check the status window: Window > MCP for Unity.
     - Restart Unity.
 - **MCP Client Not Connecting / Server Not Starting:**
     - **Verify Server Path:** Double-check the --directory path in your MCP Client\'s JSON config. It must exactly match the location where you cloned the UnityMCP repository in Installation Step 1 (e.g., .../Programs/UnityMCP/UnityMcpServer/src).

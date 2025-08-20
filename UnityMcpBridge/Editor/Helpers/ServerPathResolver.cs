@@ -113,7 +113,7 @@ namespace MCPForUnity.Editor.Helpers
             if (warnOnLegacyPackageId && p.name == LegacyId)
             {
                 Debug.LogWarning(
-                    "MCP For Unity: Detected legacy package id 'com.justinpbarnett.unity-mcp'. " +
+                    "MCP for Unity: Detected legacy package id 'com.justinpbarnett.unity-mcp'. " +
                     "Please update Packages/manifest.json to 'com.coplaydev.unity-mcp' to avoid future breakage.");
             }
 

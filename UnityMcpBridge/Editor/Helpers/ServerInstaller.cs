@@ -49,7 +49,7 @@ namespace MCPForUnity.Editor.Helpers
 
                 if (hasInstalled || TryGetEmbeddedServerSource(out _))
                 {
-                    Debug.LogWarning($"MCP For Unity: Using existing server; skipped install. Details: {ex.Message}");
+                    Debug.LogWarning($"MCP for Unity: Using existing server; skipped install. Details: {ex.Message}");
                     return;
                 }
 

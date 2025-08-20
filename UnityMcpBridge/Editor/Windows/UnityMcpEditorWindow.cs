@@ -1558,7 +1558,7 @@ namespace MCPForUnity.Editor.Windows
                             {
                                 if (debugLogsEnabled)
                                 {
-                                    UnityEngine.Debug.Log($"MCP For Unity: Auto-updated MCP config for '{mcpClient.name}' to new path: {pythonDir}");
+                                    UnityEngine.Debug.Log($"MCP for Unity: Auto-updated MCP config for '{mcpClient.name}' to new path: {pythonDir}");
                                 }
                                 mcpClient.SetStatus(McpStatus.Configured);
                             }
@@ -1572,7 +1572,7 @@ namespace MCPForUnity.Editor.Windows
                             mcpClient.SetStatus(McpStatus.IncorrectPath);
                             if (debugLogsEnabled)
                             {
-                                UnityEngine.Debug.LogWarning($"MCP For Unity: Auto-config rewrite failed for '{mcpClient.name}': {ex.Message}");
+                                UnityEngine.Debug.LogWarning($"MCP for Unity: Auto-config rewrite failed for '{mcpClient.name}': {ex.Message}");
                             }
                         }
                     }
@@ -1594,7 +1594,7 @@ namespace MCPForUnity.Editor.Windows
             string claudePath = ExecPath.ResolveClaude();
             if (string.IsNullOrEmpty(claudePath))
             {
-                UnityEngine.Debug.LogError("MCP For Unity: Claude CLI not found. Set a path in this window or install the CLI, then try again.");
+                UnityEngine.Debug.LogError("MCP for Unity: Claude CLI not found. Set a path in this window or install the CLI, then try again.");
                 return;
             }
             string uvPath = ExecPath.ResolveUv() ?? "uv";
@@ -1627,7 +1627,7 @@ namespace MCPForUnity.Editor.Windows
                 }
                 else
                 {
-                    UnityEngine.Debug.LogError($"MCP For Unity: Failed to start Claude CLI.\n{stderr}\n{stdout}");
+                    UnityEngine.Debug.LogError($"MCP for Unity: Failed to start Claude CLI.\n{stderr}\n{stdout}");
                 }
                 return;
             }
@@ -1644,7 +1644,7 @@ namespace MCPForUnity.Editor.Windows
             string claudePath = ExecPath.ResolveClaude();
             if (string.IsNullOrEmpty(claudePath))
             {
-                UnityEngine.Debug.LogError("MCP For Unity: Claude CLI not found. Set a path in this window or install the CLI, then try again.");
+                UnityEngine.Debug.LogError("MCP for Unity: Claude CLI not found. Set a path in this window or install the CLI, then try again.");
                 return;
             }
 
@@ -1672,7 +1672,7 @@ namespace MCPForUnity.Editor.Windows
 				if (claudeClient != null)
 				{
 					claudeClient.SetStatus(McpStatus.NotConfigured);
-					UnityEngine.Debug.Log("Claude CLI reports no MCP For Unity server via 'mcp get' - setting status to NotConfigured and aborting unregister.");
+					UnityEngine.Debug.Log("Claude CLI reports no MCP for Unity server via 'mcp get' - setting status to NotConfigured and aborting unregister.");
 					Repaint();
 				}
 				return;
@@ -1687,7 +1687,7 @@ namespace MCPForUnity.Editor.Windows
                 if (ExecPath.TryRun(claudePath, $"mcp remove {serverName}", projectDir, out var stdout, out var stderr, 10000, pathPrepend))
                 {
                     success = true;
-                    UnityEngine.Debug.Log($"MCP For Unity: Successfully removed MCP server: {serverName}");
+                    UnityEngine.Debug.Log($"MCP for Unity: Successfully removed MCP server: {serverName}");
                     break;
                 }
                 else if (!string.IsNullOrEmpty(stderr) &&
@@ -1709,7 +1709,7 @@ namespace MCPForUnity.Editor.Windows
                     CheckClaudeCodeConfiguration(claudeClient);
                 }
                 Repaint();
-                UnityEngine.Debug.Log("MCP For Unity: MCP server successfully unregistered from Claude Code.");
+                UnityEngine.Debug.Log("MCP for Unity: MCP server successfully unregistered from Claude Code.");
             }
             else
             {

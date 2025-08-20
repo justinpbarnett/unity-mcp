@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ===============================================
-echo MCP For Unity Development Deployment Script
+echo MCP for Unity Development Deployment Script
 echo ===============================================
 echo.
 

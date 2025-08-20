@@ -1,11 +1,11 @@
 ### Cursor/VSCode/Windsurf: UV path issue on Windows (diagnosis and fix)
 
 #### The issue
-- Some Windows machines have multiple `uv.exe` locations. Our auto-config sometimes picked a less stable path, causing the MCP client to fail to launch the MCP For Unity Server or for the path to be auto-rewritten on repaint/restart.
+- Some Windows machines have multiple `uv.exe` locations. Our auto-config sometimes picked a less stable path, causing the MCP client to fail to launch the MCP for Unity Server or for the path to be auto-rewritten on repaint/restart.
 
 #### Typical symptoms
-- Cursor shows the MCP For Unity server but never connects or reports it “can’t start.”
-- Your `%USERPROFILE%\\.cursor\\mcp.json` flips back to a different `command` path when Unity or the MCP For Unity window refreshes.
+- Cursor shows the MCP for Unity server but never connects or reports it “can’t start.”
+- Your `%USERPROFILE%\\.cursor\\mcp.json` flips back to a different `command` path when Unity or the MCP for Unity window refreshes.
 
 #### Real-world example
 - Wrong/fragile path (auto-picked):
@@ -15,7 +15,7 @@
   - `C:\Users\mrken\AppData\Local\Microsoft\WinGet\Links\uv.exe`
 
 #### Quick fix (recommended)
-1) In MCP For Unity: `Window > MCP For Unity` → select your MCP client (Cursor or Windsurf)
+1) In MCP for Unity: `Window > MCP for Unity` → select your MCP client (Cursor or Windsurf)
 2) If you see “uv Not Found,” click “Choose `uv` Install Location” and browse to:
    - `C:\Users\<YOU>\AppData\Local\Microsoft\WinGet\Links\uv.exe`
 3) If uv is already found but wrong, still click “Choose `uv` Install Location” and select the `Links\uv.exe` path above. This saves a persistent override.
@@ -72,7 +72,7 @@ If that runs without error, restart Cursor and it should connect.
 Recommended practice
 
 - Prefer the WinGet Links shim paths above. If present, select one via “Choose `uv` Install Location”.
-- If the unity window keeps rewriting to a different `uv.exe`, pick the Links shim again; MCP For Unity saves a pinned override and will stop auto-rewrites.
+- If the unity window keeps rewriting to a different `uv.exe`, pick the Links shim again; MCP for Unity saves a pinned override and will stop auto-rewrites.
 - If neither Links path exists, a reasonable fallback is `~/.local/bin/uv.exe` (uv tools bin) or a Scoop shim, but Links is preferred for stability.
 
 References
