@@ -371,8 +371,8 @@ wheels = [
 ]
 
 [[package]]
-name = "unitymcpserver"
-version = "2.0.0"
+name = "mcpforunityserver"
+version = "2.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

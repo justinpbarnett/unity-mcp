@@ -1,7 +1,7 @@
 ### macOS: Claude CLI fails to start (dyld ICU library not loaded)
 
 - Symptoms
-  - Unity MCP error: “Failed to start Claude CLI. dyld: Library not loaded: /usr/local/opt/icu4c/lib/libicui18n.71.dylib …”
+  - MCP For Unity error: “Failed to start Claude CLI. dyld: Library not loaded: /usr/local/opt/icu4c/lib/libicui18n.71.dylib …”
   - Running `claude` in Terminal fails with missing `libicui18n.xx.dylib`.
 
 - Cause
@@ -20,32 +20,32 @@
     nvm install --lts
     nvm use --lts
     npm install -g @anthropic-ai/claude-code
-    # Unity MCP → Claude Code → Choose Claude Location → ~/.nvm/versions/node/<ver>/bin/claude
+    # MCP For Unity → Claude Code → Choose Claude Location → ~/.nvm/versions/node/<ver>/bin/claude
     ```
   - Use the native installer (puts claude in a stable path):
     ```bash
     # macOS/Linux
     curl -fsSL https://claude.ai/install.sh | bash
-    # Unity MCP → Claude Code → Choose Claude Location → /opt/homebrew/bin/claude or ~/.local/bin/claude
+    # MCP For Unity → Claude Code → Choose Claude Location → /opt/homebrew/bin/claude or ~/.local/bin/claude
     ```
 
 - After fixing
-  - In Unity MCP (Claude Code), click “Choose Claude Location” and select the working `claude` binary, then Register again.
+  - In MCP For Unity (Claude Code), click “Choose Claude Location” and select the working `claude` binary, then Register again.
 
 - More details
-  - See: Troubleshooting Unity MCP and Claude Code
+  - See: Troubleshooting MCP For Unity and Claude Code
 
 ---
 
 ### FAQ (Claude Code)
 
 - Q: Unity can’t find `claude` even though Terminal can.
-  - A: macOS apps launched from Finder/Hub don’t inherit your shell PATH. In the Unity MCP window, click “Choose Claude Location” and select the absolute path (e.g., `/opt/homebrew/bin/claude` or `~/.nvm/versions/node/<ver>/bin/claude`).
+  - A: macOS apps launched from Finder/Hub don’t inherit your shell PATH. In the MCP For Unity window, click “Choose Claude Location” and select the absolute path (e.g., `/opt/homebrew/bin/claude` or `~/.nvm/versions/node/<ver>/bin/claude`).
 
 - Q: I installed via NVM; where is `claude`?
   - A: Typically `~/.nvm/versions/node/<ver>/bin/claude`. Our UI also scans NVM versions and you can browse to it via “Choose Claude Location”.
 
 - Q: The Register button says “Claude Not Found”.
-  - A: Install the CLI or set the path. Click the orange “[HELP]” link in the Unity MCP window for step‑by‑step install instructions, then choose the binary location.
+  - A: Install the CLI or set the path. Click the orange “[HELP]” link in the MCP For Unity window for step‑by‑step install instructions, then choose the binary location.
 
 
