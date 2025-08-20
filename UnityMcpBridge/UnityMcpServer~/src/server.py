@@ -12,7 +12,7 @@ logging.basicConfig(
     level=getattr(logging, config.log_level),
     format=config.log_format
 )
-logger = logging.getLogger("unity-mcp-server")
+logger = logging.getLogger("mcp-for-unity-server")
 
 # Global connection state
 _unity_connection: UnityConnection = None
@@ -40,7 +40,7 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
 
 # Initialize MCP server
 mcp = FastMCP(
-    "unity-mcp-server",
+    "mcp-for-unity-server",
     description="Unity Editor integration via Model Context Protocol",
     lifespan=server_lifespan
 )
