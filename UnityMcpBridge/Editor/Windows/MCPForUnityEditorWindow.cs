@@ -817,7 +817,7 @@ namespace MCPForUnity.Editor.Windows
 				if (claudeAvailable)
 				{
 					bool isConfigured = mcpClient.status == McpStatus.Configured;
-					string buttonText = isConfigured ? "Unregister UnityMCP with Claude Code" : "Register with Claude Code";
+					string buttonText = isConfigured ? "Unregister MCP for Unity with Claude Code" : "Register with Claude Code";
 					if (GUILayout.Button(buttonText, GUILayout.Height(32)))
 					{
 						if (isConfigured)
@@ -1623,7 +1623,7 @@ namespace MCPForUnity.Editor.Windows
                     var existingClient = mcpClients.clients.FirstOrDefault(c => c.mcpType == McpTypes.ClaudeCode);
                     if (existingClient != null) CheckClaudeCodeConfiguration(existingClient);
                     Repaint();
-                    UnityEngine.Debug.Log("<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: UnityMCP already registered with Claude Code.");
+                    UnityEngine.Debug.Log("<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: MCP for Unity already registered with Claude Code.");
                 }
                 else
                 {
@@ -1653,7 +1653,7 @@ namespace MCPForUnity.Editor.Windows
                 ? "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
                 : null; // On Windows, don't modify PATH - use system PATH as-is
 
-			// Determine if Claude has a UnityMCP server registered by using exit codes from `claude mcp get <name>`
+			// Determine if Claude has a "UnityMCP" server registered by using exit codes from `claude mcp get <name>`
 			string[] candidateNamesForGet = { "UnityMCP", "unityMCP", "unity-mcp", "UnityMcpServer" };
 			List<string> existingNames = new List<string>();
 			foreach (var candidate in candidateNamesForGet)
@@ -1732,7 +1732,7 @@ namespace MCPForUnity.Editor.Windows
             {
                 UnityEngine.Debug.Log($"Claude MCP servers (text): {listStdout}");
                 
-                // Check if output indicates no servers or contains UnityMCP variants
+                // Check if output indicates no servers or contains "UnityMCP" variants
                 if (listStdout.Contains("No MCP servers configured") || 
                     listStdout.Contains("no servers") ||
                     listStdout.Contains("No servers") ||
@@ -1742,7 +1742,7 @@ namespace MCPForUnity.Editor.Windows
                     return false;
                 }
                 
-                // Look for UnityMCP variants in the output
+                // Look for "UnityMCP" variants in the output
                 return listStdout.Contains("UnityMCP") || 
                        listStdout.Contains("unityMCP") || 
                        listStdout.Contains("unity-mcp");
@@ -2148,13 +2148,13 @@ namespace MCPForUnity.Editor.Windows
                 string configJson = File.ReadAllText(configPath);
                 dynamic claudeConfig = JsonConvert.DeserializeObject(configJson);
                 
-                // Check for UnityMCP server in the mcpServers section (current format)
+                // Check for "UnityMCP" server in the mcpServers section (current format)
                 if (claudeConfig?.mcpServers != null)
                 {
                     var servers = claudeConfig.mcpServers;
                     if (servers.UnityMCP != null || servers.unityMCP != null)
                     {
-                        // Found UnityMCP configured
+                        // Found MCP for Unity configured
                         mcpClient.SetStatus(McpStatus.Configured);
                         return;
                     }
@@ -2174,11 +2174,11 @@ namespace MCPForUnity.Editor.Windows
                         
                         if (string.Equals(normalizedProjectPath, normalizedProjectDir, StringComparison.OrdinalIgnoreCase) && project.Value?.mcpServers != null)
                         {
-                            // Check for UnityMCP (case variations)
+                            // Check for "UnityMCP" (case variations)
                             var servers = project.Value.mcpServers;
                             if (servers.UnityMCP != null || servers.unityMCP != null)
                             {
-                                // Found UnityMCP configured for this project
+                                // Found MCP for Unity configured for this project
                                 mcpClient.SetStatus(McpStatus.Configured);
                                 return;
                             }
