@@ -3,7 +3,7 @@ using Newtonsoft.Json;
 using NUnit.Framework;
 using MCPForUnity.Editor.Tools;
 
-namespace MCPForUnityTests.Editor
+namespace MCPForUnityTests.Editor.Tools
 {
     public class CommandRegistryTests
     {
