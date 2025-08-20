@@ -39,7 +39,7 @@ namespace MCPForUnity.Editor
         // Debug helpers
         private static bool IsDebugEnabled()
         {
-            try { return EditorPrefs.GetBool("UnityMCP.DebugLogs", false); } catch { return false; }
+            try { return EditorPrefs.GetBool("MCPForUnity.DebugLogs", false); } catch { return false; }
         }
         
         private static void LogBreadcrumb(string stage)

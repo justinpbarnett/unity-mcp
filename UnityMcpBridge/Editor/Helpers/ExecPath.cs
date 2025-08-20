@@ -10,7 +10,7 @@ namespace MCPForUnity.Editor.Helpers
 {
     internal static class ExecPath
     {
-        private const string PrefClaude = "UnityMCP.ClaudeCliPath";
+        private const string PrefClaude = "MCPForUnity.ClaudeCliPath";
 
         // Resolve Claude CLI absolute path. Pref → env → common locations → PATH.
         internal static string ResolveClaude()

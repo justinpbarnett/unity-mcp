@@ -9,7 +9,7 @@ namespace MCPForUnity.Editor.Helpers
     [InitializeOnLoad]
     public static class PackageInstaller
     {
-        private const string InstallationFlagKey = "UnityMCP.ServerInstalled";
+        private const string InstallationFlagKey = "MCPForUnity.ServerInstalled";
         
         static PackageInstaller()
         {

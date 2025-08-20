@@ -56,8 +56,8 @@ namespace MCPForUnity.Editor.Windows
 
             // Refresh bridge status
             isUnityBridgeRunning = UnityMcpBridge.IsRunning;
-            autoRegisterEnabled = EditorPrefs.GetBool("UnityMCP.AutoRegisterEnabled", true);
-            debugLogsEnabled = EditorPrefs.GetBool("UnityMCP.DebugLogs", false);
+            autoRegisterEnabled = EditorPrefs.GetBool("MCPForUnity.AutoRegisterEnabled", true);
+            debugLogsEnabled = EditorPrefs.GetBool("MCPForUnity.DebugLogs", false);
             foreach (McpClient mcpClient in mcpClients.clients)
             {
                 CheckMcpConfiguration(mcpClient);
@@ -241,7 +241,7 @@ namespace MCPForUnity.Editor.Windows
             if (newDebug != debugLogsEnabled)
             {
                 debugLogsEnabled = newDebug;
-                EditorPrefs.SetBool("UnityMCP.DebugLogs", debugLogsEnabled);
+                EditorPrefs.SetBool("MCPForUnity.DebugLogs", debugLogsEnabled);
             }
             EditorGUILayout.Space(15);
         }
@@ -347,7 +347,7 @@ namespace MCPForUnity.Editor.Windows
                         if (!string.IsNullOrEmpty(picked) && File.Exists(Path.Combine(picked, "server.py")))
                         {
                             pythonDirOverride = picked;
-                            EditorPrefs.SetString("UnityMCP.PythonDirOverride", pythonDirOverride);
+                            EditorPrefs.SetString("MCPForUnity.PythonDirOverride", pythonDirOverride);
                             UpdatePythonServerInstallationStatus();
                         }
                         else if (!string.IsNullOrEmpty(picked))
@@ -467,14 +467,14 @@ namespace MCPForUnity.Editor.Windows
             {
                 // Project-scoped one-time flag
                 string projectPath = Application.dataPath ?? string.Empty;
-                string key = $"UnityMCP.AutoRegistered.{ComputeSha1(projectPath)}";
+                string key = $"MCPForUnity.AutoRegistered.{ComputeSha1(projectPath)}";
                 if (EditorPrefs.GetBool(key, false))
                 {
                     return;
                 }
 
                 // Attempt client registration using discovered Python server dir
-                pythonDirOverride ??= EditorPrefs.GetString("UnityMCP.PythonDirOverride", null);
+                pythonDirOverride ??= EditorPrefs.GetString("MCPForUnity.PythonDirOverride", null);
                 string pythonDir = !string.IsNullOrEmpty(pythonDirOverride) ? pythonDirOverride : FindPackagePythonDirectory();
                 if (!string.IsNullOrEmpty(pythonDir) && File.Exists(Path.Combine(pythonDir, "server.py")))
                 {
@@ -561,7 +561,7 @@ namespace MCPForUnity.Editor.Windows
             // Force a one-shot setup regardless of first-run flag
             try
             {
-                pythonDirOverride ??= EditorPrefs.GetString("UnityMCP.PythonDirOverride", null);
+                pythonDirOverride ??= EditorPrefs.GetString("MCPForUnity.PythonDirOverride", null);
                 string pythonDir = !string.IsNullOrEmpty(pythonDirOverride) ? pythonDirOverride : FindPackagePythonDirectory();
                 if (string.IsNullOrEmpty(pythonDir) || !File.Exists(Path.Combine(pythonDir, "server.py")))
                 {
@@ -792,7 +792,7 @@ namespace MCPForUnity.Editor.Windows
 					string picked = EditorUtility.OpenFilePanel("Select 'uv' binary", suggested, "");
 					if (!string.IsNullOrEmpty(picked))
 					{
-						EditorPrefs.SetString("UnityMCP.UvPath", picked);
+						EditorPrefs.SetString("MCPForUnity.UvPath", picked);
 						ConfigureMcpClient(mcpClient);
 						Repaint();
 					}
@@ -1003,7 +1003,7 @@ namespace MCPForUnity.Editor.Windows
 		private string WriteToConfig(string pythonDir, string configPath, McpClient mcpClient = null)
         {
 			// 0) Respect explicit lock (hidden pref or UI toggle)
-			try { if (UnityEditor.EditorPrefs.GetBool("UnityMCP.LockCursorConfig", false)) return "Skipped (locked)"; } catch { }
+			try { if (UnityEditor.EditorPrefs.GetBool("MCPForUnity.LockCursorConfig", false)) return "Skipped (locked)"; } catch { }
 
             JsonSerializerSettings jsonSettings = new() { Formatting = Formatting.Indented };
 
@@ -1078,7 +1078,7 @@ namespace MCPForUnity.Editor.Windows
 			// Hard-block PackageCache on Windows unless dev override is set
 			if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
 				&& serverSrc.IndexOf(@"\Library\PackageCache\", StringComparison.OrdinalIgnoreCase) >= 0
-				&& !UnityEditor.EditorPrefs.GetBool("UnityMCP.UseEmbeddedServer", false))
+				&& !UnityEditor.EditorPrefs.GetBool("MCPForUnity.UseEmbeddedServer", false))
 			{
 				serverSrc = ServerInstaller.GetServerPath();
 			}
@@ -1120,8 +1120,8 @@ namespace MCPForUnity.Editor.Windows
 				System.IO.File.Move(tmp, configPath);
 			try
 			{
-				if (IsValidUv(uvPath)) UnityEditor.EditorPrefs.SetString("UnityMCP.UvPath", uvPath);
-				UnityEditor.EditorPrefs.SetString("UnityMCP.ServerSrc", serverSrc);
+				if (IsValidUv(uvPath)) UnityEditor.EditorPrefs.SetString("MCPForUnity.UvPath", uvPath);
+				UnityEditor.EditorPrefs.SetString("MCPForUnity.ServerSrc", serverSrc);
 			}
 			catch { }
 
@@ -1206,7 +1206,7 @@ namespace MCPForUnity.Editor.Windows
 		{
 			try
 			{
-				string remembered = UnityEditor.EditorPrefs.GetString("UnityMCP.ServerSrc", string.Empty);
+				string remembered = UnityEditor.EditorPrefs.GetString("MCPForUnity.ServerSrc", string.Empty);
 				if (!string.IsNullOrEmpty(remembered) && File.Exists(Path.Combine(remembered, "server.py")))
 				{
 					return remembered;
@@ -1219,7 +1219,7 @@ namespace MCPForUnity.Editor.Windows
 					return installed;
 				}
 
-				bool useEmbedded = UnityEditor.EditorPrefs.GetBool("UnityMCP.UseEmbeddedServer", false);
+				bool useEmbedded = UnityEditor.EditorPrefs.GetBool("MCPForUnity.UseEmbeddedServer", false);
 				if (useEmbedded && ServerPathResolver.TryFindEmbeddedServerSource(out string embedded)
 					&& File.Exists(Path.Combine(embedded, "server.py")))
 				{
@@ -1261,7 +1261,7 @@ namespace MCPForUnity.Editor.Windows
                 }
 
 				// Resolve via shared helper (handles local registry and older fallback) only if dev override on
-				if (UnityEditor.EditorPrefs.GetBool("UnityMCP.UseEmbeddedServer", false))
+				if (UnityEditor.EditorPrefs.GetBool("MCPForUnity.UseEmbeddedServer", false))
 				{
 					if (ServerPathResolver.TryFindEmbeddedServerSource(out string embedded))
 					{

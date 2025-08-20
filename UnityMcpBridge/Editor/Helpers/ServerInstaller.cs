@@ -49,7 +49,7 @@ namespace MCPForUnity.Editor.Helpers
 
                 if (hasInstalled || TryGetEmbeddedServerSource(out _))
                 {
-                    Debug.LogWarning($"UnityMCP: Using existing server; skipped install. Details: {ex.Message}");
+                    Debug.LogWarning($"MCP For Unity: Using existing server; skipped install. Details: {ex.Message}");
                     return;
                 }
 
@@ -261,7 +261,7 @@ namespace MCPForUnity.Editor.Helpers
             // Allow user override via EditorPrefs
             try
             {
-                string overridePath = EditorPrefs.GetString("UnityMCP.UvPath", string.Empty);
+                string overridePath = EditorPrefs.GetString("MCPForUnity.UvPath", string.Empty);
                 if (!string.IsNullOrEmpty(overridePath) && File.Exists(overridePath))
                 {
                     if (ValidateUvBinary(overridePath)) return overridePath;
