@@ -26,7 +26,7 @@ The window has four areas: Server Status, Unity Bridge, MCP Client Configuration
   - Installed / Installed (Embedded) / Not Installed.
 - Mode and ports:
   - Mode: Auto or Standard.
-  - Ports: Unity 6400, MCP Server 6500.
+  - Ports: Unity (varies; shown in UI), MCP 6500.
 - Actions:
   - Auto-Setup: Registers/updates your selected MCP client(s), ensures bridge connectivity. Shows “Connected ✓” after success.
   - Repair Python Env: Rebuilds a clean Python environment (deletes `.venv`, runs `uv sync`).
@@ -75,7 +75,7 @@ Notes:
 ---
 
 ## Troubleshooting
-- Python or `uv` not:
+- Python or `uv` not found:
   - Help: https://github.com/CoplayDev/unity-mcp/wiki/1.-Fix-Unity-MCP-and-Cursor,-VSCode-&-Windsurf
 - Claude CLI not found:
   - Help: https://github.com/CoplayDev/unity-mcp/wiki/2.-Fix-Unity-MCP-and-Claude-Code
