@@ -1102,6 +1102,15 @@ namespace MCPForUnity.Editor.Windows
 				existingConfig.servers.unityMCP.command = uvPath;
 				existingConfig.servers.unityMCP.args = Newtonsoft.Json.Linq.JArray.FromObject(newArgs);
 				existingConfig.servers.unityMCP.type = "stdio";
+				// Ensure env is present for all clients
+				if (existingConfig.servers.unityMCP.env == null)
+					existingConfig.servers.unityMCP.env = new Newtonsoft.Json.Linq.JObject();
+				// Add disabled=false for Windsurf and Kiro (do not overwrite if already set)
+				if (mcpClient != null && (mcpClient.mcpType == McpTypes.Windsurf || mcpClient.mcpType == McpTypes.Kiro))
+				{
+					if (existingConfig.servers.unityMCP.disabled == null)
+						existingConfig.servers.unityMCP.disabled = false;
+				}
 			}
 			else
 			{
@@ -1109,6 +1118,15 @@ namespace MCPForUnity.Editor.Windows
 				if (existingConfig.mcpServers.unityMCP == null) existingConfig.mcpServers.unityMCP = new Newtonsoft.Json.Linq.JObject();
 				existingConfig.mcpServers.unityMCP.command = uvPath;
 				existingConfig.mcpServers.unityMCP.args = Newtonsoft.Json.Linq.JArray.FromObject(newArgs);
+				// Ensure env is present for all clients
+				if (existingConfig.mcpServers.unityMCP.env == null)
+					existingConfig.mcpServers.unityMCP.env = new Newtonsoft.Json.Linq.JObject();
+				// Add disabled=false for Windsurf and Kiro (do not overwrite if already set)
+				if (mcpClient != null && (mcpClient.mcpType == McpTypes.Windsurf || mcpClient.mcpType == McpTypes.Kiro))
+				{
+					if (existingConfig.mcpServers.unityMCP.disabled == null)
+						existingConfig.mcpServers.unityMCP.disabled = false;
+				}
 			}
 
 			string mergedJson = JsonConvert.SerializeObject(existingConfig, jsonSettings);
