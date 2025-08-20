@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ===============================================
-echo Unity MCP Development Restore Script
+echo MCP For Unity Development Restore Script
 echo ===============================================
 echo.
 echo Note: The Python server is bundled under UnityMcpBridge\UnityMcpServer~ in the package.
