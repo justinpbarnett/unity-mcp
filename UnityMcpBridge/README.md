@@ -54,7 +54,7 @@ The window has four areas: Server Status, Unity Bridge, MCP Client Configuration
     - Choose `uv` Install Location: If uv isn’t on PATH, select the uv binary.
     - A compact “Config:” line shows the resolved config file name once uv/server are detected.
   - Claude Code:
-    - Register with Claude Code / Unregister UnityMCP with Claude Code.
+    - Register with Claude Code / Unregister MCP for Unity with Claude Code.
     - If the CLI isn’t found, click “Choose Claude Install Location”.
     - The window displays the resolved Claude CLI path when detected.
 
