@@ -254,7 +254,7 @@ claude mcp add UnityMCP -- "C:/Users/USERNAME/AppData/Roaming/Python/Python313/S
 
 1. **Open your Unity Project.** The MCP For Unity package should connect automatically. Check status via Window > MCP For Unity.
     
-2. **Start your MCP Client** (Claude, Cursor, etc.). It should automatically launch the MCP For Unity Server (Python) using the configuration from Installation Step 3.
+2. **Start your MCP Client** (Claude, Cursor, etc.). It should automatically launch the MCP For Unity Server (Python) using the configuration from Installation Step 2.
     
 3. **Interact!** Unity tools should now be available in your MCP Client.
     
