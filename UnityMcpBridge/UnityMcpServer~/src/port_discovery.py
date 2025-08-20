@@ -19,7 +19,7 @@ from typing import Optional, List
 import glob
 import socket
 
-logger = logging.getLogger("unity-mcp-server")
+logger = logging.getLogger("mcp-for-unity-server")
 
 class PortDiscovery:
     """Handles port discovery from Unity Bridge registry"""

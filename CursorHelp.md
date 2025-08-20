@@ -21,7 +21,7 @@
 3) If uv is already found but wrong, still click “Choose `uv` Install Location” and select the `Links\uv.exe` path above. This saves a persistent override.
 4) Click “Auto Configure” (or re-open the client) and restart Cursor.
 
-This sets an override stored in the Editor (key: `MCPForUnity.UvPath`) so UnityMCP won’t auto-rewrite the config back to a different `uv.exe` later.
+This sets an override stored in the Editor (key: `MCPForUnity.UvPath`) so MCP for Unity won’t auto-rewrite the config back to a different `uv.exe` later.
 
 #### Verify the fix
 - Confirm global Cursor config is at: `%USERPROFILE%\\.cursor\\mcp.json`
