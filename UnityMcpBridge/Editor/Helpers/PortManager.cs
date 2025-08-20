@@ -136,7 +136,7 @@ namespace MCPForUnity.Editor.Helpers
         /// </summary>
         /// <param name="port">Port to check</param>
         /// <returns>True if port appears to be used by MCP for Unity</returns>
-        public static bool IsPortUsedByUnityMcp(int port)
+        public static bool IsPortUsedByMCPForUnity(int port)
         {
             try
             {
@@ -173,7 +173,7 @@ namespace MCPForUnity.Editor.Helpers
                 }
 
                 // If the port is in use by an MCP instance, continue waiting briefly
-                if (!IsPortUsedByUnityMcp(port))
+                if (!IsPortUsedByMCPForUnity(port))
                 {
                     // In use by something else; don't keep waiting
                     return false;

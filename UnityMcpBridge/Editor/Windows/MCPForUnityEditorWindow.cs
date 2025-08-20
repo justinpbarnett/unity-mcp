@@ -17,7 +17,7 @@ using MCPForUnity.Editor.Models;
 
 namespace MCPForUnity.Editor.Windows
 {
-    public class UnityMcpEditorWindow : EditorWindow
+    public class MCPForUnityEditorWindow : EditorWindow
     {
         private bool isUnityBridgeRunning = false;
         private Vector2 scrollPosition;
@@ -47,7 +47,7 @@ namespace MCPForUnity.Editor.Windows
         [MenuItem("Window/MCP for Unity")]
         public static void ShowWindow()
         {
-            GetWindow<UnityMcpEditorWindow>("MCP for Unity");
+            GetWindow<MCPForUnityEditorWindow>("MCP for Unity");
         }
 
         private void OnEnable()
@@ -55,7 +55,7 @@ namespace MCPForUnity.Editor.Windows
             UpdatePythonServerInstallationStatus();
 
             // Refresh bridge status
-            isUnityBridgeRunning = UnityMcpBridge.IsRunning;
+            isUnityBridgeRunning = MCPForUnityBridge.IsRunning;
             autoRegisterEnabled = EditorPrefs.GetBool("MCPForUnity.AutoRegisterEnabled", true);
             debugLogsEnabled = EditorPrefs.GetBool("MCPForUnity.DebugLogs", false);
             foreach (McpClient mcpClient in mcpClients.clients)
@@ -76,7 +76,7 @@ namespace MCPForUnity.Editor.Windows
         private void OnFocus()
         {
             // Refresh bridge running state on focus in case initialization completed after domain reload
-            isUnityBridgeRunning = UnityMcpBridge.IsRunning;
+            isUnityBridgeRunning = MCPForUnityBridge.IsRunning;
             if (mcpClients.clients.Count > 0 && selectedClientIndex < mcpClients.clients.Count)
             {
                 McpClient selectedClient = mcpClients.clients[selectedClientIndex];
@@ -272,13 +272,13 @@ namespace MCPForUnity.Editor.Windows
             EditorGUILayout.Space(5);
             
             EditorGUILayout.BeginHorizontal();
-            bool isAutoMode = UnityMcpBridge.IsAutoConnectMode();
+            bool isAutoMode = MCPForUnityBridge.IsAutoConnectMode();
             GUIStyle modeStyle = new GUIStyle(EditorStyles.miniLabel) { fontSize = 11 };
             EditorGUILayout.LabelField($"Mode: {(isAutoMode ? "Auto" : "Standard")}", modeStyle);
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
             
-            int currentUnityPort = UnityMcpBridge.GetCurrentPort();
+            int currentUnityPort = MCPForUnityBridge.GetCurrentPort();
             GUIStyle portStyle = new GUIStyle(EditorStyles.miniLabel)
             {
                 fontSize = 11
@@ -369,7 +369,7 @@ namespace MCPForUnity.Editor.Windows
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             
             // Always reflect the live state each repaint to avoid stale UI after recompiles
-            isUnityBridgeRunning = UnityMcpBridge.IsRunning;
+            isUnityBridgeRunning = MCPForUnityBridge.IsRunning;
 
             GUIStyle sectionTitleStyle = new GUIStyle(EditorStyles.boldLabel)
             {
@@ -511,12 +511,12 @@ namespace MCPForUnity.Editor.Windows
                 }
 
                 // Ensure the bridge is listening and has a fresh saved port
-                if (!UnityMcpBridge.IsRunning)
+                if (!MCPForUnityBridge.IsRunning)
                 {
                     try
                     {
-                        UnityMcpBridge.StartAutoConnect();
-                        isUnityBridgeRunning = UnityMcpBridge.IsRunning;
+                        MCPForUnityBridge.StartAutoConnect();
+                        isUnityBridgeRunning = MCPForUnityBridge.IsRunning;
                         Repaint();
                     }
                     catch (Exception ex)
@@ -526,7 +526,7 @@ namespace MCPForUnity.Editor.Windows
                 }
 
                 // Verify bridge with a quick ping
-                lastBridgeVerifiedOk = VerifyBridgePing(UnityMcpBridge.GetCurrentPort());
+                lastBridgeVerifiedOk = VerifyBridgePing(MCPForUnityBridge.GetCurrentPort());
 
                 EditorPrefs.SetBool(key, true);
             }
@@ -599,11 +599,11 @@ namespace MCPForUnity.Editor.Windows
                 lastClientRegisteredOk = anyRegistered || IsCursorConfigured(pythonDir) || IsClaudeConfigured();
 
                 // Restart/ensure bridge
-                UnityMcpBridge.StartAutoConnect();
-                isUnityBridgeRunning = UnityMcpBridge.IsRunning;
+                MCPForUnityBridge.StartAutoConnect();
+                isUnityBridgeRunning = MCPForUnityBridge.IsRunning;
 
                 // Verify
-                lastBridgeVerifiedOk = VerifyBridgePing(UnityMcpBridge.GetCurrentPort());
+                lastBridgeVerifiedOk = VerifyBridgePing(MCPForUnityBridge.GetCurrentPort());
                 Repaint();
             }
             catch (Exception e)
@@ -934,14 +934,14 @@ namespace MCPForUnity.Editor.Windows
         {
             if (isUnityBridgeRunning)
             {
-                UnityMcpBridge.Stop();
+                MCPForUnityBridge.Stop();
             }
             else
             {
-                UnityMcpBridge.Start();
+                MCPForUnityBridge.Start();
             }
             // Reflect the actual state post-operation (avoid optimistic toggle)
-            isUnityBridgeRunning = UnityMcpBridge.IsRunning;
+            isUnityBridgeRunning = MCPForUnityBridge.IsRunning;
             Repaint();
         }
 
@@ -1424,7 +1424,7 @@ namespace MCPForUnity.Editor.Windows
 
         private void LoadValidationLevelSetting()
         {
-            string savedLevel = EditorPrefs.GetString("UnityMCP_ScriptValidationLevel", "standard");
+            string savedLevel = EditorPrefs.GetString("MCPForUnity_ScriptValidationLevel", "standard");
             validationLevelIndex = savedLevel.ToLower() switch
             {
                 "basic" => 0,
@@ -1445,7 +1445,7 @@ namespace MCPForUnity.Editor.Windows
                 3 => "strict",
                 _ => "standard"
             };
-            EditorPrefs.SetString("UnityMCP_ScriptValidationLevel", levelString);
+            EditorPrefs.SetString("MCPForUnity_ScriptValidationLevel", levelString);
         }
 
         private string GetValidationLevelDescription(int index)
@@ -1462,7 +1462,7 @@ namespace MCPForUnity.Editor.Windows
 
         public static string GetCurrentValidationLevel()
         {
-            string savedLevel = EditorPrefs.GetString("UnityMCP_ScriptValidationLevel", "standard");
+            string savedLevel = EditorPrefs.GetString("MCPForUnity_ScriptValidationLevel", "standard");
             return savedLevel;
         }
 

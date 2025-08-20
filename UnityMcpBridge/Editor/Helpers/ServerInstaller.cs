@@ -13,7 +13,7 @@ namespace MCPForUnity.Editor.Helpers
         private const string ServerFolder = "UnityMcpServer";
 
         /// <summary>
-        /// Ensures the unity-mcp-server is installed locally by copying from the embedded package source.
+        /// Ensures the mcp-for-unity-server is installed locally by copying from the embedded package source.
         /// No network calls or Git operations are performed.
         /// </summary>
         public static void EnsureServerInstalled()

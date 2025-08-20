@@ -17,7 +17,7 @@ using MCPForUnity.Editor.Tools;
 namespace MCPForUnity.Editor
 {
     [InitializeOnLoad]
-    public static partial class UnityMcpBridge
+    public static partial class MCPForUnityBridge
     {
         private static TcpListener listener;
         private static bool isRunning = false;
@@ -94,7 +94,7 @@ namespace MCPForUnity.Editor
             return Directory.Exists(fullPath);
         }
 
-        static UnityMcpBridge()
+        static MCPForUnityBridge()
         {
             // Skip bridge in headless/batch environments (CI/builds)
             if (Application.isBatchMode)
@@ -227,7 +227,7 @@ namespace MCPForUnity.Editor
                 // Don't restart if already running on a working port
                 if (isRunning && listener != null)
                 {
-                    Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: UnityMcpBridge already running on port {currentUnityPort}");
+                    Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: MCPForUnityBridge already running on port {currentUnityPort}");
                     return;
                 }
 
@@ -310,7 +310,7 @@ namespace MCPForUnity.Editor
 
                     isRunning = true;
                     isAutoConnectMode = false;
-                    Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: UnityMcpBridge started on port {currentUnityPort}.");
+                    Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: MCPForUnityBridge started on port {currentUnityPort}.");
                     Task.Run(ListenerLoop);
                     EditorApplication.update += ProcessCommands;
                     // Write initial heartbeat immediately
@@ -343,11 +343,11 @@ namespace MCPForUnity.Editor
                     listener?.Stop();
                     listener = null;
                     EditorApplication.update -= ProcessCommands;
-                    Debug.Log("<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: UnityMcpBridge stopped.");
+                    Debug.Log("<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: MCPForUnityBridge stopped.");
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"Error stopping UnityMcpBridge: {ex.Message}");
+                    Debug.LogError($"Error stopping MCPForUnityBridge: {ex.Message}");
                 }
             }
         }
