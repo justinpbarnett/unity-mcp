@@ -52,7 +52,7 @@ MCP For Unity acts as a bridge, allowing AI assistants (like Claude, Cursor) to 
 MCP For Unity connects your tools using two components:
 
 1.  **MCP For Unity Bridge:** A Unity package running inside the Editor. (Installed via Package Manager).
-2.  **MCP For Unity Server:** A Python server that runs locally, communicating between the Unity Bridge and your MCP Client. (Installed manually).
+2.  **MCP For Unity Server:** A Python server that runs locally, communicating between the Unity Bridge and your MCP Client. (Installed automatically by the package on first run or via Auto-Setup; manual setup is available as a fallback).
 
 **Flow:** `[Your LLM via MCP Client] <-> [MCP For Unity Server (Python)] <-> [MCP For Unity Bridge (Unity Editor)]`
 
@@ -111,7 +111,7 @@ MCP For Unity connects your tools using two components:
     https://github.com/CoplayDev/unity-mcp.git?path=/UnityMcpBridge
     ```
 5.  Click `Add`.
-6. The MCP Server should automatically be installed onto your machine as a result of this process.
+6. The MCP server is installed automatically by the package on first run or via Auto-Setup. If that fails, use Manual Configuration (below).
 
 #### To install via OpenUPM
 
@@ -123,7 +123,7 @@ MCP For Unity connects your tools using two components:
 
 ### Step 2: Configure Your MCP Client
 
-Connect your MCP Client (Claude, Cursor, etc.) to the Python server you installed in Step 1.
+Connect your MCP Client (Claude, Cursor, etc.) to the Python server set up in Step 1 (auto) or via Manual Configuration (below).
 
 <img width="648" height="599" alt="MCPForUnity-Readme-Image" src="https://github.com/user-attachments/assets/b4a725da-5c43-4bd6-80d6-ee2e3cca9596" />
 
@@ -136,7 +136,7 @@ Connect your MCP Client (Claude, Cursor, etc.) to the Python server you installe
 <details><summary><strong>Client-specific troubleshooting</strong></summary>
 
   - **VSCode**: uses `Code/User/mcp.json` with top-level `servers.unityMCP` and `"type": "stdio"`. On Windows, MCP For Unity writes an absolute `uv.exe` (prefers WinGet Links shim) to avoid PATH issues.
-  - **Cursor / Windsurf** [(**help link**)](https://github.com/CoplayDev/unity-mcp/wiki/1.-Fix-Unity-MCP-and-Cursor,-VSCode-&-Windsurf): if `uv` is missing, the MCP For Unity window shows "uv Not Found" with a quick [HELP] link and a "Choose UV Install Location" button.
+  - **Cursor / Windsurf** [(**help link**)](https://github.com/CoplayDev/unity-mcp/wiki/1.-Fix-Unity-MCP-and-Cursor,-VSCode-&-Windsurf): if `uv` is missing, the MCP For Unity window shows "uv Not Found" with a quick [HELP] link and a "Choose `uv` Install Location" button.
   - **Claude Code** [(**help link**)](https://github.com/CoplayDev/unity-mcp/wiki/2.-Fix-Unity-MCP-and-Claude-Code): if `claude` isn't found, the window shows "Claude Not Found" with [HELP] and a "Choose Claude Location" button. Unregister now updates the UI immediately.</details>
 
 

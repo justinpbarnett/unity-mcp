@@ -16,9 +16,9 @@
 
 #### Quick fix (recommended)
 1) In MCP For Unity: `Window > MCP For Unity` → select your MCP client (Cursor or Windsurf)
-2) If you see “uv Not Found,” click “Choose UV Install Location” and browse to:
+2) If you see “uv Not Found,” click “Choose `uv` Install Location” and browse to:
    - `C:\Users\<YOU>\AppData\Local\Microsoft\WinGet\Links\uv.exe`
-3) If uv is already found but wrong, still click “Choose UV Install Location” and select the `Links\uv.exe` path above. This saves a persistent override.
+3) If uv is already found but wrong, still click “Choose `uv` Install Location” and select the `Links\uv.exe` path above. This saves a persistent override.
 4) Click “Auto Configure” (or re-open the client) and restart Cursor.
 
 This sets an override stored in the Editor (key: `UnityMCP.UvPath`) so UnityMCP won’t auto-rewrite the config back to a different `uv.exe` later.
@@ -71,7 +71,7 @@ If that runs without error, restart Cursor and it should connect.
 
 Recommended practice
 
-- Prefer the WinGet Links shim paths above. If present, select one via “Choose UV Install Location”.
+- Prefer the WinGet Links shim paths above. If present, select one via “Choose `uv` Install Location”.
 - If the unity window keeps rewriting to a different `uv.exe`, pick the Links shim again; MCP For Unity saves a pinned override and will stop auto-rewrites.
 - If neither Links path exists, a reasonable fallback is `~/.local/bin/uv.exe` (uv tools bin) or a Scoop shim, but Links is preferred for stability.
 

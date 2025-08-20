@@ -110,4 +110,4 @@ After switching, open Package Manager and Refresh to re-resolve packages.
 - Verify backup directory path is correct
 
 ### Windows uv path issues
-- On Windows, when testing GUI clients, prefer the WinGet Links `uv.exe`; if multiple `uv.exe` exist, use "Choose UV Install Location" to pin the Links shim.
+- On Windows, when testing GUI clients, prefer the WinGet Links `uv.exe`; if multiple `uv.exe` exist, use "Choose `uv` Install Location" to pin the Links shim.

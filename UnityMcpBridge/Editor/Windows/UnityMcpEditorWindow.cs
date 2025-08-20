@@ -328,7 +328,7 @@ namespace MCPForUnity.Editor.Windows
                 EditorGUILayout.LabelField("<color=#cc3333><b>Warning:</b></color> No Python installation found.", warnStyle);
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    if (GUILayout.Button("Open install instructions", GUILayout.Width(200)))
+                    if (GUILayout.Button("Open Install Instructions", GUILayout.Width(200)))
                     {
                         Application.OpenURL("https://www.python.org/downloads/");
                     }
@@ -786,7 +786,7 @@ namespace MCPForUnity.Editor.Windows
 
 				EditorGUILayout.Space(8);
 				EditorGUILayout.BeginHorizontal();
-				if (GUILayout.Button("Choose UV Install Location", GUILayout.Width(260), GUILayout.Height(22)))
+				if (GUILayout.Button("Choose uv Install Location", GUILayout.Width(260), GUILayout.Height(22)))
 				{
 					string suggested = RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "/opt/homebrew/bin" : Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
 					string picked = EditorUtility.OpenFilePanel("Select 'uv' binary", suggested, "");

@@ -13,7 +13,7 @@ The window has four areas: Server Status, Unity Bridge, MCP Client Configuration
 1. Open Window > MCP for Unity.
 2. Click “Auto-Setup”.
 3. If prompted:
-   - Select the server folder that contains `server.py` (UnityMcpServer/src).
+   - Select the server folder that contains `server.py` (UnityMcpServer~/src).
    - Install Python and/or uv if missing.
    - For Claude Code, ensure the `claude` CLI is installed.
 4. Click “Start Bridge” if the Unity Bridge shows “Stopped”.
@@ -32,7 +32,7 @@ The window has four areas: Server Status, Unity Bridge, MCP Client Configuration
   - Repair Python Env: Rebuilds a clean Python environment (deletes `.venv`, runs `uv sync`).
   - Select server folder…: Choose the folder containing `server.py`.
   - Verify again: Re-checks server presence.
-  - If Python isn’t detected, use “Open install instructions”.
+  - If Python isn’t detected, use “Open Install Instructions”.
 
 ---
 
@@ -51,7 +51,7 @@ The window has four areas: Server Status, Unity Bridge, MCP Client Configuration
       - Command: uv
       - Args: run --directory <pythonDir> server.py
     - Manual Setup: Opens a window with a pre-filled JSON snippet to copy/paste into your client config.
-    - Choose UV Install Location: If uv isn’t on PATH, select the uv binary.
+    - Choose `uv` Install Location: If uv isn’t on PATH, select the uv binary.
     - A compact “Config:” line shows the resolved config file name once uv/server are detected.
   - Claude Code:
     - Register with Claude Code / Unregister UnityMCP with Claude Code.
@@ -76,9 +76,9 @@ Notes:
 
 ## Troubleshooting
 - Python or `uv` not found:
-  - Help: https://github.com/CoplayDev/unity-mcp/wiki/1.-Fix-Unity-MCP-and-Cursor,-VSCode-&-Windsurf
+  - Help: [Fix MCP for Unity with Cursor, VS Code & Windsurf](https://github.com/CoplayDev/unity-mcp/wiki/1.-Fix-Unity-MCP-and-Cursor,-VSCode-&-Windsurf)
 - Claude CLI not found:
-  - Help: https://github.com/CoplayDev/unity-mcp/wiki/2.-Fix-Unity-MCP-and-Claude-Code
+  - Help: [Fix MCP for Unity with Claude Code](https://github.com/CoplayDev/unity-mcp/wiki/2.-Fix-Unity-MCP-and-Claude-Code)
 
 ---
 
