@@ -1096,41 +1096,15 @@ namespace MCPForUnity.Editor.Windows
 			}
 
 			// 4) Ensure containers exist and write back minimal changes
-			if (isVSCode)
-			{
-				if (existingConfig.servers == null) existingConfig.servers = new Newtonsoft.Json.Linq.JObject();
-				if (existingConfig.servers.unityMCP == null) existingConfig.servers.unityMCP = new Newtonsoft.Json.Linq.JObject();
-				existingConfig.servers.unityMCP.command = uvPath;
-				existingConfig.servers.unityMCP.args = Newtonsoft.Json.Linq.JArray.FromObject(newArgs);
-				existingConfig.servers.unityMCP.type = "stdio";
-				// Ensure env is present for all clients
-				if (existingConfig.servers.unityMCP.env == null)
-					existingConfig.servers.unityMCP.env = new Newtonsoft.Json.Linq.JObject();
-				// Add disabled=false for Windsurf and Kiro (do not overwrite if already set)
-				if (mcpClient != null && (mcpClient.mcpType == McpTypes.Windsurf || mcpClient.mcpType == McpTypes.Kiro))
-				{
-					if (existingConfig.servers.unityMCP.disabled == null)
-						existingConfig.servers.unityMCP.disabled = false;
-				}
-			}
-			else
-			{
-				if (existingConfig.mcpServers == null) existingConfig.mcpServers = new Newtonsoft.Json.Linq.JObject();
-				if (existingConfig.mcpServers.unityMCP == null) existingConfig.mcpServers.unityMCP = new Newtonsoft.Json.Linq.JObject();
-				existingConfig.mcpServers.unityMCP.command = uvPath;
-				existingConfig.mcpServers.unityMCP.args = Newtonsoft.Json.Linq.JArray.FromObject(newArgs);
-				// Ensure env is present for all clients
-				if (existingConfig.mcpServers.unityMCP.env == null)
-					existingConfig.mcpServers.unityMCP.env = new Newtonsoft.Json.Linq.JObject();
-				// Add disabled=false for Windsurf and Kiro (do not overwrite if already set)
-				if (mcpClient != null && (mcpClient.mcpType == McpTypes.Windsurf || mcpClient.mcpType == McpTypes.Kiro))
-				{
-					if (existingConfig.mcpServers.unityMCP.disabled == null)
-						existingConfig.mcpServers.unityMCP.disabled = false;
-				}
-			}
+            JObject existingRoot;
+            if (existingConfig is JObject eo)
+                existingRoot = eo;
+            else
+                existingRoot = JObject.FromObject(existingConfig);
 
-			string mergedJson = JsonConvert.SerializeObject(existingConfig, jsonSettings);
+            existingRoot = ConfigJsonBuilder.ApplyUnityServerToExistingConfig(existingRoot, uvPath, serverSrc, mcpClient);
+
+			string mergedJson = JsonConvert.SerializeObject(existingRoot, jsonSettings);
 			string tmp = configPath + ".tmp";
 			System.IO.File.WriteAllText(tmp, mergedJson, System.Text.Encoding.UTF8);
 			if (System.IO.File.Exists(configPath))
@@ -1162,103 +1136,16 @@ namespace MCPForUnity.Editor.Windows
         {
             // Get the Python directory path using Package Manager API
             string pythonDir = FindPackagePythonDirectory();
-            string manualConfigJson;
-            
-            // Create common JsonSerializerSettings
-            JsonSerializerSettings jsonSettings = new() { Formatting = Formatting.Indented };
-            
-            // Use switch statement to handle different client types
-            switch (mcpClient.mcpType)
+            // Build manual JSON centrally using the shared builder
+            string uvPathForManual = FindUvPath();
+            if (uvPathForManual == null)
             {
-				case McpTypes.VSCode:
-					// Resolve uv so VSCode launches the correct executable even if not on PATH
-					string uvPathManual = FindUvPath();
-					if (uvPathManual == null)
-					{
-						UnityEngine.Debug.LogError("UV package manager not found. Cannot generate manual configuration.");
-						return;
-					}
-					// Create VSCode-specific configuration with proper format
-					var vscodeConfig = new
-					{
-						servers = new
-						{
-							unityMCP = new
-							{
-								command = uvPathManual,
-								args = new[] { "run", "--directory", pythonDir, "server.py" },
-								type = "stdio"
-							}
-						}
-					};
-					manualConfigJson = JsonConvert.SerializeObject(vscodeConfig, jsonSettings);
-					break;
-                    
-                default:
-                    // Create standard MCP configuration for other clients
-                    string uvPath = FindUvPath();
-                    if (uvPath == null)
-                    {
-                        UnityEngine.Debug.LogError("UV package manager not found. Cannot configure manual setup.");
-                        return;
-                    }
-                    
-                    McpConfig jsonConfig = new()
-                    {
-                        mcpServers = new McpConfigServers
-                        {
-                            unityMCP = new McpConfigServer
-                            {
-                                command = uvPath,
-                                args = new[] { "run", "--directory", pythonDir, "server.py" },
-                            },
-                        },
-                    };
-                    manualConfigJson = JsonConvert.SerializeObject(jsonConfig, jsonSettings);
-                    break;
+                UnityEngine.Debug.LogError("UV package manager not found. Cannot generate manual configuration.");
+                return;
             }
 
-            // Ensure env is present for all and disabled:false for Windsurf/Kiro
-            manualConfigJson = ProcessManualConfigJson(manualConfigJson, mcpClient);
-
+            string manualConfigJson = ConfigJsonBuilder.BuildManualConfigJson(uvPathForManual, pythonDir, mcpClient);
             ManualConfigEditorWindow.ShowWindow(configPath, manualConfigJson, mcpClient);
-        }
-
-        // Inject env and disabled into the manual JSON shape for display/copy
-        private static string ProcessManualConfigJson(string json, McpClient client)
-        {
-            try
-            {
-                var token = JToken.Parse(json);
-
-                JObject unityNode = null;
-                if (token["servers"] is JObject servers && servers["unityMCP"] is JObject unityVs)
-                {
-                    unityNode = unityVs;
-                }
-                else if (token["mcpServers"] is JObject mservers && mservers["unityMCP"] is JObject unity)
-                {
-                    unityNode = unity;
-                }
-
-                if (unityNode != null)
-                {
-                    if (unityNode["env"] == null)
-                        unityNode["env"] = new JObject();
-
-                    if (client != null && (client.mcpType == McpTypes.Windsurf || client.mcpType == McpTypes.Kiro))
-                    {
-                        if (unityNode["disabled"] == null)
-                            unityNode["disabled"] = false;
-                    }
-                }
-
-                return token.ToString(Formatting.Indented);
-            }
-            catch
-            {
-                return json; // fallback
-            }
         }
 
 		private static string ResolveServerSrc()
