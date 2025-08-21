@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 using MCPForUnity.Editor.Data;
@@ -1217,7 +1218,47 @@ namespace MCPForUnity.Editor.Windows
                     break;
             }
 
+            // Ensure env is present for all and disabled:false for Windsurf/Kiro
+            manualConfigJson = ProcessManualConfigJson(manualConfigJson, mcpClient);
+
             ManualConfigEditorWindow.ShowWindow(configPath, manualConfigJson, mcpClient);
+        }
+
+        // Inject env and disabled into the manual JSON shape for display/copy
+        private static string ProcessManualConfigJson(string json, McpClient client)
+        {
+            try
+            {
+                var token = JToken.Parse(json);
+
+                JObject unityNode = null;
+                if (token["servers"] is JObject servers && servers["unityMCP"] is JObject unityVs)
+                {
+                    unityNode = unityVs;
+                }
+                else if (token["mcpServers"] is JObject mservers && mservers["unityMCP"] is JObject unity)
+                {
+                    unityNode = unity;
+                }
+
+                if (unityNode != null)
+                {
+                    if (unityNode["env"] == null)
+                        unityNode["env"] = new JObject();
+
+                    if (client != null && (client.mcpType == McpTypes.Windsurf || client.mcpType == McpTypes.Kiro))
+                    {
+                        if (unityNode["disabled"] == null)
+                            unityNode["disabled"] = false;
+                    }
+                }
+
+                return token.ToString(Formatting.Indented);
+            }
+            catch
+            {
+                return json; // fallback
+            }
         }
 
 		private static string ResolveServerSrc()
