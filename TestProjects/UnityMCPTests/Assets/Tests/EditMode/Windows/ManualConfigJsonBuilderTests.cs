@@ -8,7 +8,7 @@ namespace MCPForUnityTests.Editor.Windows
     public class ManualConfigJsonBuilderTests
     {
         [Test]
-        public void VSCode_ManualJson_HasServersEnvType_NoDisabled()
+        public void VSCode_ManualJson_HasServers_NoEnv_NoDisabled()
         {
             var client = new McpClient { name = "VSCode", mcpType = McpTypes.VSCode };
             string json = ConfigJsonBuilder.BuildManualConfigJson("/usr/bin/uv", "/path/to/server", client);
@@ -19,7 +19,7 @@ namespace MCPForUnityTests.Editor.Windows
             Assert.AreEqual("/usr/bin/uv", (string)unity["command"]);
             CollectionAssert.AreEqual(new[] { "run", "--directory", "/path/to/server", "server.py" }, unity["args"].ToObject<string[]>());
             Assert.AreEqual("stdio", (string)unity["type"], "VSCode should include type=stdio");
-            Assert.NotNull(unity["env"], "env should be included");
+            Assert.IsNull(unity["env"], "env should not be added for VSCode");
             Assert.IsNull(unity["disabled"], "disabled should not be added for VSCode");
         }
 
@@ -38,7 +38,7 @@ namespace MCPForUnityTests.Editor.Windows
         }
 
         [Test]
-        public void Cursor_ManualJson_HasMcpServersEnv_NoDisabled()
+        public void Cursor_ManualJson_HasMcpServers_NoEnv_NoDisabled()
         {
             var client = new McpClient { name = "Cursor", mcpType = McpTypes.Cursor };
             string json = ConfigJsonBuilder.BuildManualConfigJson("/usr/bin/uv", "/path/to/server", client);
@@ -46,7 +46,7 @@ namespace MCPForUnityTests.Editor.Windows
             var root = JObject.Parse(json);
             var unity = (JObject)root.SelectToken("mcpServers.unityMCP");
             Assert.NotNull(unity, "Expected mcpServers.unityMCP node");
-            Assert.NotNull(unity["env"], "env should be included");
+            Assert.IsNull(unity["env"], "env should not be added for Cursor");
             Assert.IsNull(unity["disabled"], "disabled should not be added for Cursor");
             Assert.IsNull(unity["type"], "type should not be added for non-VSCode clients");
         }

@@ -96,7 +96,7 @@ namespace MCPForUnityTests.Editor.Windows
         }
 
         [Test]
-        public void AddsOnlyEnv_ForCursor()
+        public void DoesNotAddEnvOrDisabled_ForCursor()
         {
             var configPath = Path.Combine(_tempRoot, "cursor.json");
             WriteInitialConfig(configPath, isVSCode:false, command:_fakeUvPath, directory:"/old/path");
@@ -107,12 +107,12 @@ namespace MCPForUnityTests.Editor.Windows
             var root = JObject.Parse(File.ReadAllText(configPath));
             var unity = (JObject)root.SelectToken("mcpServers.unityMCP");
             Assert.NotNull(unity, "Expected mcpServers.unityMCP node");
-            Assert.NotNull(unity["env"], "env should be present for all clients");
+            Assert.IsNull(unity["env"], "env should not be added for non-Windsurf/Kiro clients");
             Assert.IsNull(unity["disabled"], "disabled should not be added for non-Windsurf/Kiro clients");
         }
 
         [Test]
-        public void VSCode_AddsEnv_NoDisabled()
+        public void DoesNotAddEnvOrDisabled_ForVSCode()
         {
             var configPath = Path.Combine(_tempRoot, "vscode.json");
             WriteInitialConfig(configPath, isVSCode:true, command:_fakeUvPath, directory:"/old/path");
@@ -123,7 +123,7 @@ namespace MCPForUnityTests.Editor.Windows
             var root = JObject.Parse(File.ReadAllText(configPath));
             var unity = (JObject)root.SelectToken("servers.unityMCP");
             Assert.NotNull(unity, "Expected servers.unityMCP node");
-            Assert.NotNull(unity["env"], "env should be present for VSCode as well");
+            Assert.IsNull(unity["env"], "env should not be added for VSCode client");
             Assert.IsNull(unity["disabled"], "disabled should not be added for VSCode client");
             Assert.AreEqual("stdio", (string)unity["type"], "VSCode entry should include type=stdio");
         }

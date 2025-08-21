@@ -62,13 +62,13 @@ namespace MCPForUnity.Editor.Helpers
                 if (unity["type"] != null) unity.Remove("type");
             }
 
-            if (unity["env"] == null)
-            {
-                unity["env"] = new JObject();
-            }
-
             if (client != null && (client.mcpType == McpTypes.Windsurf || client.mcpType == McpTypes.Kiro))
             {
+                if (unity["env"] == null)
+                {
+                    unity["env"] = new JObject();
+                }
+
                 if (unity["disabled"] == null)
                 {
                     unity["disabled"] = false;
