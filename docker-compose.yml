@@ -1,0 +1,85 @@
+# Docker Compose configuration for Unity MCP Headless Server
+version: '3.8'
+
+services:
+  unity-mcp-headless:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: unity-mcp-headless
+    ports:
+      - "8080:8080"  # HTTP API port
+      - "6400:6400"  # Unity MCP port
+    environment:
+      - UNITY_HEADLESS=true
+      - UNITY_MCP_AUTOSTART=true
+      - UNITY_MCP_PORT=6400
+      - UNITY_MCP_LOG_PATH=/tmp/unity-logs/unity-mcp.log
+      - LOG_LEVEL=INFO
+      - UNITY_PROJECT_PATH=/app/unity-projects/demo-project
+    volumes:
+      # Mount Unity project directory
+      - ./unity-projects:/app/unity-projects:ro
+      # Mount builds directory for outputs
+      - ./builds:/app/builds
+      # Mount logs directory
+      - ./logs:/tmp/unity-logs
+      # Mount Unity license (if available)
+      - ${UNITY_LICENSE_FILE:-/dev/null}:/tmp/Unity_v2022.x.ulf:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - unity-network
+
+  # Optional: Redis for command queuing (for future enhancements)
+  redis:
+    image: redis:7-alpine
+    container_name: unity-mcp-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - unity-network
+    profiles:
+      - full  # Only start with --profile full
+
+  # Optional: Prometheus for monitoring (for future enhancements)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: unity-mcp-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - unity-network
+    profiles:
+      - monitoring  # Only start with --profile monitoring
+
+networks:
+  unity-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  prometheus-data:

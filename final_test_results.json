@@ -1,0 +1,110 @@
+{
+  "summary": {
+    "total_tests": 14,
+    "passed_tests": 14,
+    "failed_tests": 0,
+    "success_rate": 100.0,
+    "avg_response_time": 1.908936551639012
+  },
+  "milestone_requirements": {
+    "concurrent_commands_ok": true,
+    "response_time_ok": false,
+    "success_rate_ok": true
+  },
+  "performance_test": {
+    "duration": 30,
+    "total_requests": 75,
+    "successful_requests": 75,
+    "failed_requests": 0,
+    "success_rate": 100.0,
+    "avg_response_time": 0.3013993803660075,
+    "min_response_time": 0.3012392520904541,
+    "max_response_time": 0.3028221130371094
+  },
+  "test_results": [
+    {
+      "name": "Health Check",
+      "success": true,
+      "response_time": 0.002249479293823242,
+      "error": null
+    },
+    {
+      "name": "Status Check",
+      "success": true,
+      "response_time": 0.0010445117950439453,
+      "error": null
+    },
+    {
+      "name": "Command: ping",
+      "success": true,
+      "response_time": 0.10094332695007324,
+      "error": null
+    },
+    {
+      "name": "Command: manage_scene",
+      "success": true,
+      "response_time": 0.3017401695251465,
+      "error": null
+    },
+    {
+      "name": "Command: manage_gameobject",
+      "success": true,
+      "response_time": 0.30121374130249023,
+      "error": null
+    },
+    {
+      "name": "Headless: create_empty_scene",
+      "success": true,
+      "response_time": 2.001120090484619,
+      "error": null
+    },
+    {
+      "name": "Headless: create_basic_objects",
+      "success": true,
+      "response_time": 0.5011088848114014,
+      "error": null
+    },
+    {
+      "name": "Headless: setup_basic_lighting",
+      "success": true,
+      "response_time": 0.5011913776397705,
+      "error": null
+    },
+    {
+      "name": "Headless: get_scene_info",
+      "success": true,
+      "response_time": 0.5012173652648926,
+      "error": null
+    },
+    {
+      "name": "Concurrent Command 1",
+      "success": true,
+      "response_time": 1.5017411708831787,
+      "error": null
+    },
+    {
+      "name": "Concurrent Command 2",
+      "success": true,
+      "response_time": 3.0026421546936035,
+      "error": null
+    },
+    {
+      "name": "Concurrent Command 3",
+      "success": true,
+      "response_time": 4.5035481452941895,
+      "error": null
+    },
+    {
+      "name": "Concurrent Command 4",
+      "success": true,
+      "response_time": 6.002689361572266,
+      "error": null
+    },
+    {
+      "name": "Concurrent Command 5",
+      "success": true,
+      "response_time": 7.502661943435669,
+      "error": null
+    }
+  ]
+}
