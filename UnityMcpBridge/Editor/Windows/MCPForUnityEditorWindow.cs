@@ -1106,7 +1106,8 @@ namespace MCPForUnity.Editor.Windows
 
 			string mergedJson = JsonConvert.SerializeObject(existingRoot, jsonSettings);
 			string tmp = configPath + ".tmp";
-			System.IO.File.WriteAllText(tmp, mergedJson, System.Text.Encoding.UTF8);
+			// Write UTF-8 without BOM to avoid issues on Windows editors/tools
+			System.IO.File.WriteAllText(tmp, mergedJson, new System.Text.UTF8Encoding(false));
 			if (System.IO.File.Exists(configPath))
 				System.IO.File.Replace(tmp, configPath, null);
 			else
