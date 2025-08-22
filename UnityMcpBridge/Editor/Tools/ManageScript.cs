@@ -217,7 +217,7 @@ namespace MCPForUnity.Editor.Tools
 
             try
             {
-                File.WriteAllText(fullPath, contents);
+                File.WriteAllText(fullPath, contents, new System.Text.UTF8Encoding(false));
                 AssetDatabase.ImportAsset(relativePath);
                 AssetDatabase.Refresh(); // Ensure Unity recognizes the new script
                 return Response.Success(
@@ -298,7 +298,7 @@ namespace MCPForUnity.Editor.Tools
 
             try
             {
-                File.WriteAllText(fullPath, contents);
+                File.WriteAllText(fullPath, contents, new System.Text.UTF8Encoding(false));
                 AssetDatabase.ImportAsset(relativePath); // Re-import to reflect changes
                 AssetDatabase.Refresh();
                 return Response.Success(

@@ -206,10 +206,10 @@ namespace MCPForUnity.Editor.Helpers
                 string registryFile = GetRegistryFilePath();
                 string json = JsonConvert.SerializeObject(portConfig, Formatting.Indented);
                 // Write to hashed, project-scoped file
-                File.WriteAllText(registryFile, json);
+                File.WriteAllText(registryFile, json, new System.Text.UTF8Encoding(false));
                 // Also write to legacy stable filename to avoid hash/case drift across reloads
                 string legacy = Path.Combine(GetRegistryDirectory(), RegistryFileName);
-                File.WriteAllText(legacy, json);
+                File.WriteAllText(legacy, json, new System.Text.UTF8Encoding(false));
 
                 if (IsDebugEnabled()) Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: Saved port {port} to storage");
             }

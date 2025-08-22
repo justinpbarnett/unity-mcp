@@ -719,7 +719,7 @@ namespace MCPForUnity.Editor
                     project_path = Application.dataPath,
                     last_heartbeat = DateTime.UtcNow.ToString("O")
                 };
-                File.WriteAllText(filePath, JsonConvert.SerializeObject(payload));
+                File.WriteAllText(filePath, JsonConvert.SerializeObject(payload), new System.Text.UTF8Encoding(false));
             }
             catch (Exception)
             {
