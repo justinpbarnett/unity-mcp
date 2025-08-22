@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using UnityEditor;
@@ -24,9 +25,13 @@ namespace MCPForUnity.Editor.Helpers
                 string destRoot = Path.Combine(saveLocation, ServerFolder);
                 string destSrc = Path.Combine(destRoot, "src");
 
-                if (File.Exists(Path.Combine(destSrc, "server.py")))
+                // Check if we need to install or update the server
+                var embeddedVersion = ReadEmbeddedVersionInfo();
+                var installedVersion = ReadInstalledVersionInfo();
+                
+                if (!ShouldOverwriteServer(embeddedVersion, installedVersion))
                 {
-                    return; // Already installed
+                    return; // Server is up-to-date
                 }
 
                 if (!TryGetEmbeddedServerSource(out string embeddedSrc))
@@ -40,6 +45,12 @@ namespace MCPForUnity.Editor.Helpers
                 // Copy the entire UnityMcpServer folder (parent of src)
                 string embeddedRoot = Path.GetDirectoryName(embeddedSrc) ?? embeddedSrc; // go up from src to UnityMcpServer
                 CopyDirectoryRecursive(embeddedRoot, destRoot);
+                
+                // Log the update for user visibility
+                if (installedVersion != null)
+                {
+                    Debug.Log($"<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: Server updated from v{installedVersion.server_semver} to v{embeddedVersion?.server_semver ?? "unknown"}");
+                }
             }
             catch (Exception ex)
             {
@@ -124,6 +135,126 @@ namespace MCPForUnity.Editor.Helpers
         private static bool TryGetEmbeddedServerSource(out string srcPath)
         {
             return ServerPathResolver.TryFindEmbeddedServerSource(out srcPath);
+        }
+
+        /// <summary>
+        /// Represents version information for the MCP server.
+        /// </summary>
+        private class ServerVersionInfo
+        {
+            public string server_semver { get; set; }
+            public int protocol_version { get; set; }
+            public string package_fingerprint { get; set; }
+        }
+
+        /// <summary>
+        /// Reads the version manifest from the embedded server.
+        /// </summary>
+        private static ServerVersionInfo ReadEmbeddedVersionInfo()
+        {
+            try
+            {
+                if (!TryGetEmbeddedServerSource(out string embeddedSrc))
+                    return null;
+
+                string manifestPath = Path.Combine(embeddedSrc, "server_version.json");
+                if (!File.Exists(manifestPath))
+                    return null;
+
+                string json = File.ReadAllText(manifestPath);
+                return Newtonsoft.Json.JsonConvert.DeserializeObject<ServerVersionInfo>(json);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"Failed to read embedded version info: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Reads the version manifest from the installed server.
+        /// </summary>
+        private static ServerVersionInfo ReadInstalledVersionInfo()
+        {
+            try
+            {
+                string installedSrc = GetServerPath();
+                string manifestPath = Path.Combine(installedSrc, "server_version.json");
+                if (!File.Exists(manifestPath))
+                    return null;
+
+                string json = File.ReadAllText(manifestPath);
+                return Newtonsoft.Json.JsonConvert.DeserializeObject<ServerVersionInfo>(json);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"Failed to read installed version info: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Determines if the server should be overwritten based on version information.
+        /// </summary>
+        private static bool ShouldOverwriteServer(ServerVersionInfo embeddedVersion, ServerVersionInfo installedVersion)
+        {
+            // No server.py - always install
+            if (!File.Exists(Path.Combine(GetServerPath(), "server.py")))
+                return true;
+
+            // No embedded version info - can't determine, skip update
+            if (embeddedVersion == null)
+                return false;
+
+            // No installed version info - overwrite (legacy installation)
+            if (installedVersion == null)
+                return true;
+
+            // Protocol version differs - overwrite for compatibility
+            if (embeddedVersion.protocol_version != installedVersion.protocol_version)
+                return true;
+
+            // Compare semantic versions - overwrite if embedded is newer
+            if (CompareSemanticVersions(embeddedVersion.server_semver, installedVersion.server_semver) > 0)
+                return true;
+
+            // Package fingerprint differs - overwrite for consistency
+            if (!string.IsNullOrEmpty(embeddedVersion.package_fingerprint) && 
+                !string.IsNullOrEmpty(installedVersion.package_fingerprint) &&
+                embeddedVersion.package_fingerprint != installedVersion.package_fingerprint)
+                return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// Compares two semantic version strings. Returns > 0 if version1 is newer than version2.
+        /// </summary>
+        private static int CompareSemanticVersions(string version1, string version2)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(version1) || string.IsNullOrEmpty(version2))
+                    return 0;
+
+                var v1Parts = version1.Split('.').Select(int.Parse).ToArray();
+                var v2Parts = version2.Split('.').Select(int.Parse).ToArray();
+
+                int maxLength = Math.Max(v1Parts.Length, v2Parts.Length);
+                for (int i = 0; i < maxLength; i++)
+                {
+                    int v1Part = i < v1Parts.Length ? v1Parts[i] : 0;
+                    int v2Part = i < v2Parts.Length ? v2Parts[i] : 0;
+                    
+                    if (v1Part != v2Part)
+                        return v1Part.CompareTo(v2Part);
+                }
+                return 0;
+            }
+            catch
+            {
+                return 0; // If parsing fails, consider versions equal
+            }
         }
 
         private static readonly string[] _skipDirs = { ".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".git" };
