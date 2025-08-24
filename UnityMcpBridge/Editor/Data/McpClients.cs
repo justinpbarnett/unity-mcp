@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using MCPForUnity.Editor.Models;
 
 namespace MCPForUnity.Editor.Data
@@ -82,19 +83,31 @@ namespace MCPForUnity.Editor.Data
             new()
             {
                 name = "VSCode GitHub Copilot",
+                // Windows path is canonical under %AppData%\Code\User
                 windowsConfigPath = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                     "Code",
                     "User",
                     "mcp.json"
                 ),
-                linuxConfigPath = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                    ".config",
-                    "Code",
-                    "User",
-                    "mcp.json"
-                ),
+                // For macOS, VSCode stores user config under ~/Library/Application Support/Code/User
+                // For Linux, it remains under ~/.config/Code/User
+                linuxConfigPath = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+                    ? Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                        "Library",
+                        "Application Support",
+                        "Code",
+                        "User",
+                        "mcp.json"
+                    )
+                    : Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                        ".config",
+                        "Code",
+                        "User",
+                        "mcp.json"
+                    ),
                 mcpType = McpTypes.VSCode,
                 configStatus = "Not Configured",
             },
